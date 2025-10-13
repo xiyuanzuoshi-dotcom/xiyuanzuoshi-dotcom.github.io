@@ -2,7 +2,7 @@ body {
     font-family: 'Arial', sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f0f0f0;
+    background-color: #000; /* 背景が黒でフェード時も自然 */
 }
 
 #game-container {
@@ -12,9 +12,38 @@ body {
     overflow: hidden;
 }
 
+/* 背景画像レイヤー */
+#background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 0;
+    transition: background-image 0.5s ease-in-out;
+}
+
+/* キャラクター画像レイヤー */
+#character {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 350px;
+    height: 550px;
+    background-size: contain;
+    background-position: bottom center;
+    background-repeat: no-repeat;
+    z-index: 1;
+}
+
+/* テキストボックス */
 #game-text {
     position: absolute;
-    bottom: 220px; /* 選択肢と被らないように高く配置 */
+    bottom: 220px;
     left: 50%;
     transform: translateX(-50%);
     color: white;
@@ -23,11 +52,13 @@ body {
     text-align: center;
     line-height: 1.5em;
     padding: 15px 20px;
-    background-color: rgba(0, 0, 0, 0.6); /* 半透明の背景で視認性UP */
+    background-color: rgba(0, 0, 0, 0.6);
     border-radius: 12px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+    z-index: 2;
 }
 
+/* 選択肢エリア */
 #choices {
     position: absolute;
     bottom: 30px;
@@ -38,14 +69,16 @@ body {
     display: flex;
     flex-direction: column;
     gap: 15px;
+    z-index: 2;
 }
 
+/* ボタン */
 button {
     font-size: 1.1em;
     padding: 15px 20px;
     border-radius: 10px;
     border: 2px solid #ccc;
-    background-color: rgba(255, 255, 255, 0.8); /* 薄い白 */
+    background-color: rgba(255, 255, 255, 0.8);
     color: #333;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -56,9 +89,9 @@ button:hover {
     border-color: #aaa;
 }
 
-/* 選択済みボタン用のクラス */
+/* 選択済みボタン */
 button.selected {
-    background-color: #ccefff; /* 淡い水色 */
+    background-color: #ccefff;
     border-color: #66c2ff;
     color: #004d66;
     font-weight: bold;
