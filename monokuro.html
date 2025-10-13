@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RGB復元デモ（グラデーション）</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f0f0f0;
+    }
+    h1 {
+      margin-top: 20px;
+    }
+    canvas {
+      margin-top: 20px;
+      border: 1px solid #ccc;
+      cursor: default;
+    }
+    .color-btn {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      margin: 10px;
+      display: inline-block;
+      cursor: pointer;
+      border: 2px solid #444;
+    }
+    #video {
+      display: none;
+      margin-top: 20px;
+      width: 300px;
+    }
+    #ending {
+      display: none;
+      font-size: 1.5em;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>RGBを段階的に復元しよう！</h1>
+
+<!-- ボタン -->
+<div>
+  <div class="color-btn" id="redBtn" style="background: red;"></div>
+  <div class="color-btn" id="greenBtn" style="background: green;"></div>
+  <div class="color-btn" id="blueBtn" style="background: blue;"></div>
+</div>
+
+<!-- キャンバス -->
+<canvas id="canvas" width="300" height="300"></canvas>
+
+<!-- カメラ映像 -->
+<video id="video" autoplay playsinline></video>
+
+<!-- 終了表示 -->
+<div id="ending">タイトルエンド：ご覧いただきありがとうございました！</div>
+
+<script>
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  const state = {
+    red: false,
+    green: false,
+    blue: false
+  };
+
+  let originalData = null;
+
+  // 初期化：グラデーション生成
+  function generateGradientImage() {
+    const imgData = ctx.createImageData(canvas.width, canvas.height);
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const i = (y * canvas.width + x) * 4;
+        const r = (x / canvas.width) * 255;
+        const g = (y / canvas.height) * 255;
+        const b = 255 - (x / canvas.width) * 255;
+
+        imgData.data[i] = r;
+        imgData.data[i + 1] = g;
+        imgData.data[i + 2] = b;
+        imgData.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+    originalData = new Uint8ClampedArray(imgData.data); // 保存
+    convertToGrayscale();
+  }
+
+  // モノクロに変換
+  function convertToGrayscale() {
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < imgData.data.length; i += 4) {
+      const r = originalData[i];
+      const g = originalData[i + 1];
+      const b = originalData[i + 2];
+      const avg = (r + g + b) / 3;
+      imgData.data[i] = imgData.data[i + 1] = imgData.data[i + 2] = avg;
+      imgData.data[i + 3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  // RGBを選択的に復元
+  function restoreSelectedChannels() {
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < imgData.data.length; i += 4) {
+      imgData.data[i] = state.red ? originalData[i] : 0;
+      imgData.data[i + 1] = state.green ? originalData[i + 1] : 0;
+      imgData.data[i + 2] = state.blue ? originalData[i + 2] : 0;
+      imgData.data[i + 3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  // 色ボタンイベント
+  document.getElementById('redBtn').addEventListener('click', () => {
+    if (!state.red) {
+      state.red = true;
+      restoreSelectedChannels();
+      checkReady();
+    }
+  });
+
+  document.getElementById('greenBtn').addEventListener('click', () => {
+    if (!state.green) {
+      state.green = true;
+      restoreSelectedChannels();
+      checkReady();
+    }
+  });
+
+  document.getElementById('blueBtn').addEventListener('click', () => {
+    if (!state.blue) {
+      state.blue = true;
+      restoreSelectedChannels();
+      checkReady();
+    }
+  });
+
+  // 3色選択済みかチェック
+  function checkReady() {
+    if (state.red && state.green && state.blue) {
+      canvas.style.cursor = 'pointer';
+      canvas.addEventListener('click', showCameraOnce);
+    }
+  }
+
+  // カメラ表示
+  async function showCameraOnce() {
+    canvas.removeEventListener('click', showCameraOnce);
+    const video = document.getElementById('video');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" } // インカメラ指定
+      });
+      video.srcObject = stream;
+      video.style.display = 'block';
+
+      setTimeout(() => {
+        document.getElementById('ending').style.display = 'block';
+      }, 5000);
+
+    } catch (e) {
+      alert("カメラにアクセスできませんでした");
+      console.error(e);
+    }
+  }
+
+  // 実行
+  generateGradientImage();
+</script>
+
+</body>
+</html>

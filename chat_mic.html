@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>音声認識でリアクション</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      font-family: sans-serif;
+      background-color: white;
+      transition: background-color 0.5s ease;
+    }
+    #status {
+      font-size: 2rem;
+      margin-bottom: 20px;
+    }
+    #output {
+      font-size: 3rem;
+      font-weight: bold;
+      color: #333;
+      min-height: 3.5rem;
+      text-align: center;
+      width: 100%;
+      max-width: 600px;
+      word-wrap: break-word;
+    }
+    button {
+      font-size: 2rem;
+      padding: 10px 30px;
+      border-radius: 8px;
+      border: none;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">「マイクを開始」ボタンを押して話しかけてください</div>
+  <button id="startBtn">マイクを開始</button>
+  <div id="output"></div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+    const startBtn = document.getElementById("startBtn");
+
+    // 音声認識のセットアップ（Webkit版もあるのでそちらも考慮）
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      statusEl.textContent = "このブラウザは音声認識に対応していません。ChromeやEdgeを使ってください。";
+      startBtn.disabled = true;
+    } else {
+      const recognition = new SpeechRecognition();
+      recognition.lang = "ja-JP";
+      recognition.interimResults = false; // 確定結果のみ取得
+      recognition.maxAlternatives = 1;
+
+      startBtn.addEventListener("click", () => {
+        recognition.start();
+        statusEl.textContent = "認識中…話しかけてください。";
+        outputEl.textContent = "";
+      });
+
+      recognition.addEventListener("result", (event) => {
+        const transcript = event.results[0][0].transcript.trim();
+        outputEl.textContent = `認識結果: 「${transcript}」`;
+
+        if (transcript === "こんにちは") {
+          statusEl.textContent = "こんにちは！反応しました😊";
+          document.body.style.backgroundColor = "#a8e6cf"; // 緑色に
+          setTimeout(() => {
+            document.body.style.backgroundColor = "white";
+            statusEl.textContent = "「マイクを開始」ボタンを押して話しかけてください";
+          }, 1500);
+        } else {
+          statusEl.textContent = "言葉は認識されましたが、特別な反応はありません。";
+          setTimeout(() => {
+            statusEl.textContent = "「マイクを開始」ボタンを押して話しかけてください";
+          }, 1500);
+        }
+      });
+
+      recognition.addEventListener("error", (e) => {
+        statusEl.textContent = "エラーが発生しました: " + e.error;
+      });
+
+      recognition.addEventListener("end", () => {
+        // 認識が終わったらボタンを再度押せるように
+        statusEl.textContent = "認識終了。もう一度話すにはボタンを押してください。";
+      });
+    }
+  </script>
+</body>
+</html>

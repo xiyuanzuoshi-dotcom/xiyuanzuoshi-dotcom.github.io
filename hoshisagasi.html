@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>おみくじ＋エフェクト＋効果音（結果別）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      overflow: hidden;
+      background: #000;
+      touch-action: none;
+    }
+    video, canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    let star = { x: 150, y: 150, radius: 50 };
+    let showOmikuji = false;
+    let omikujiText = "";
+    let lastTouch = null;
+
+    const omikujiList = ["大吉 🎉", "中吉 😊", "小吉 😌", "末吉 🌈", "凶 😨", "大凶 💀"];
+
+    // おみくじごとの効果音URL
+    const omikujiSounds = {
+      "大吉 🎉": "https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg",
+      "中吉 😊": "https://actions.google.com/sounds/v1/cartoon/clang.ogg",
+      "小吉 😌": "https://actions.google.com/sounds/v1/cartoon/pop.ogg",
+      "末吉 🌈": "https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg",
+      "凶 😨": "https://actions.google.com/sounds/v1/cartoon/boing.ogg",
+      "大凶 💀": "https://actions.google.com/sounds/v1/cartoon/cartoon_cowbell.ogg"
+    };
+
+    // Audioオブジェクトを使い回し
+    let soundPlayer = new Audio();
+
+    // パーティクル配列
+    let particles = [];
+
+    // カメラ起動（外カメ優先）
+    function startCamera() {
+      navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } }
+      }).then(stream => {
+        video.srcObject = stream;
+      }).catch(err => {
+        alert("カメラが使えません：" + err.message);
+      });
+    }
+
+    startCamera();
+
+    function resizeCanvas() {
+      canvas.width = video.videoWidth || window.innerWidth;
+      canvas.height = video.videoHeight || window.innerHeight;
+      placeNewStar();
+    }
+
+    video.addEventListener("loadedmetadata", resizeCanvas);
+    window.addEventListener("resize", resizeCanvas);
+
+    function placeNewStar() {
+      const padding = 60;
+      star.x = padding + Math.random() * (canvas.width - padding * 2);
+      star.y = padding + Math.random() * (canvas.height - padding * 2);
+    }
+
+    function drawStar(x, y, r) {
+      ctx.beginPath();
+      for (let i = 0; i <= 10; i++) {
+        const angle = (Math.PI * i) / 5;
+        const radius = i % 2 === 0 ? r : r / 2;
+        const sx = x + Math.cos(angle) * radius;
+        const sy = y + Math.sin(angle) * radius;
+        if (i === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+      ctx.fillStyle = "gold";
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 2;
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    class Particle {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = Math.random() * 4 + 2;
+        this.speedX = (Math.random() - 0.5) * 4;
+        this.speedY = (Math.random() - 0.5) * 4;
+        this.alpha = 1;
+        this.decay = 0.02 + Math.random() * 0.02;
+      }
+      update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        this.alpha -= this.decay;
+      }
+      draw() {
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+        ctx.fillStyle = "yellow";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    document.body.addEventListener("pointerdown", e => {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+      lastTouch = { x, y };
+
+      const dx = x - star.x;
+      const dy = y - star.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      const hitRange = star.radius * 1.5;
+
+      if (dist < hitRange) {
+        omikujiText = omikujiList[Math.floor(Math.random() * omikujiList.length)];
+        showOmikuji = true;
+
+        // 結果に応じて効果音再生
+        const soundUrl = omikujiSounds[omikujiText];
+        if (soundUrl) {
+          soundPlayer.src = soundUrl;
+          soundPlayer.currentTime = 0;
+          soundPlayer.play();
+        }
+
+        // パーティクル生成
+        for (let i = 0; i < 30; i++) {
+          particles.push(new Particle(star.x, star.y));
+        }
+
+        setTimeout(() => {
+          showOmikuji = false;
+          lastTouch = null;
+          particles = [];
+          placeNewStar();
+        }, 3000);
+      }
+    });
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (!showOmikuji) {
+        drawStar(star.x, star.y, star.radius);
+      }
+
+      particles.forEach((p, i) => {
+        p.update();
+        p.draw();
+        if (p.alpha <= 0) particles.splice(i, 1);
+      });
+
+      if (lastTouch) {
+        ctx.beginPath();
+        ctx.arc(lastTouch.x, lastTouch.y, 10, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255, 0, 0, 0.7)";
+        ctx.fill();
+      }
+
+      if (showOmikuji) {
+        ctx.font = "bold 48px sans-serif";
+        ctx.fillStyle = "white";
+        ctx.textAlign = "center";
+        ctx.fillText(omikujiText, canvas.width / 2, canvas.height / 2);
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    draw();
+  </script>
+</body>
+</html>

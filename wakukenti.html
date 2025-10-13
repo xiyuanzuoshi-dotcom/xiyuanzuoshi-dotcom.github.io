@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>四角形検出デモ</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    video, canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+
+  <!-- OpenCV.js -->
+  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    function onOpenCvReady() {
+      console.log("✅ OpenCV.js loaded");
+
+      // カメラ起動
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(stream => {
+          video.srcObject = stream;
+          video.onloadedmetadata = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            requestAnimationFrame(processFrame);
+          };
+        })
+        .catch(err => {
+          alert("カメラエラー: " + err.message);
+        });
+    }
+
+    function processFrame() {
+      if (!video.videoWidth) {
+        requestAnimationFrame(processFrame);
+        return;
+      }
+
+      // カメラ映像を描画
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // OpenCVで処理
+      let src = new cv.Mat(canvas.height, canvas.width, cv.CV_8UC4);
+      let gray = new cv.Mat();
+      let edges = new cv.Mat();
+      let contours = new cv.MatVector();
+      let hierarchy = new cv.Mat();
+
+      src.data.set(ctx.getImageData(0, 0, canvas.width, canvas.height).data);
+
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.Canny(gray, edges, 50, 150);
+      cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+
+      for (let i = 0; i < contours.size(); i++) {
+        let cnt = contours.get(i);
+        let approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * cv.arcLength(cnt, true), true);
+
+        if (approx.rows === 4 && cv.contourArea(approx) > 1000 && cv.isContourConvex(approx)) {
+          // 四角形と判断された場合
+          ctx.beginPath();
+          const p0 = approx.data32S[0]; const p1 = approx.data32S[1];
+          for (let j = 0; j < 4; j++) {
+            const x1 = approx.intPtr(j)[0];
+            const y1 = approx.intPtr(j)[1];
+            const x2 = approx.intPtr((j + 1) % 4)[0];
+            const y2 = approx.intPtr((j + 1) % 4)[1];
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+          }
+          ctx.strokeStyle = "red";
+          ctx.lineWidth = 4;
+          ctx.stroke();
+        }
+
+        approx.delete();
+        cnt.delete();
+      }
+
+      src.delete(); gray.delete(); edges.delete(); contours.delete(); hierarchy.delete();
+
+      requestAnimationFrame(processFrame);
+    }
+  </script>
+</body>
+</html>

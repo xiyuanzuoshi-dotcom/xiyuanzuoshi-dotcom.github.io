@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>こんにちはでリアクション</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      font-family: sans-serif;
+      background-color: white;
+      transition: background-color 0.5s ease;
+    }
+    #input {
+      font-size: 2rem;
+      padding: 10px 15px;
+      width: 300px;
+      border-radius: 8px;
+      border: 2px solid #333;
+      margin-bottom: 20px;
+    }
+    #send {
+      font-size: 2rem;
+      padding: 10px 30px;
+      border-radius: 8px;
+      border: none;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+      margin-bottom: 40px;
+      transition: background-color 0.3s ease;
+    }
+    #send:hover {
+      background-color: #0056b3;
+    }
+    #output {
+      font-size: 3rem;
+      font-weight: bold;
+      color: #333;
+      min-height: 3.5rem;
+      text-align: center;
+      width: 100%;
+      max-width: 500px;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+  <input id="input" type="text" placeholder="こんにちは 話しかけてみて" />
+  <button id="send">送信</button>
+  <div id="output"></div>
+
+  <script>
+    const input = document.getElementById("input");
+    const output = document.getElementById("output");
+    const send = document.getElementById("send");
+
+    send.addEventListener("click", () => {
+      const text = input.value.trim();
+      if (!text) return;
+
+      if (text === "こんにちは") {
+        output.textContent = "こんにちは！嬉しいです😊";
+        document.body.style.backgroundColor = "#ffeb3b"; // 黄色に変える
+
+        // 1秒後に背景色を戻す
+        setTimeout(() => {
+          document.body.style.backgroundColor = "white";
+        }, 1000);
+      } else {
+        output.textContent = "まだその言葉には対応していません。";
+      }
+      input.value = "";
+    });
+
+    // Enterキーでも送信できるようにする
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        send.click();
+      }
+    });
+  </script>
+</body>
+</html>

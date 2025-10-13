@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>なぞり追従キラキラエフェクト</title>
+<style>
+  body, html {
+    margin: 0; padding: 0; overflow: hidden; background: #000;
+    touch-action: none;
+  }
+  #container {
+    position: relative;
+    width: 100vw; height: 100vh;
+  }
+  video, canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  canvas {
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div id="container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+<script>
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('overlay');
+  const ctx = canvas.getContext('2d');
+
+  // 外カメ指定
+  const constraints = {
+    video: { facingMode: { exact: "environment" } }
+  };
+
+  navigator.mediaDevices.getUserMedia(constraints)
+    .then(stream => {
+      video.srcObject = stream;
+    })
+    .catch(err => {
+      console.warn("背面カメラ取得失敗。フロントカメラに切替。", err);
+      return navigator.mediaDevices.getUserMedia({ video: true });
+    })
+    .then(stream => {
+      if (stream) video.srcObject = stream;
+    })
+    .catch(err => {
+      console.error("カメラ取得失敗:", err);
+    });
+
+  function resize() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  }
+
+  video.addEventListener('loadedmetadata', () => {
+    resize();
+    drawLoop();
+  });
+
+  // パーティクル管理
+  const particles = [];
+
+  function addParticle(x, y) {
+    particles.push({
+      x, y,
+      radius: Math.random() * 3 + 2,
+      alpha: 1,
+      vx: (Math.random() - 0.5) * 1,
+      vy: (Math.random() - 0.5) * 1
+    });
+  }
+
+  // 指の位置追従用
+  let isTouching = false;
+  let touchX = 0;
+  let touchY = 0;
+
+  function pointerDown(e) {
+    isTouching = true;
+    updateTouchPosition(e);
+    // パーティクル追加はdrawLoopで連続追加するのでここでは1回だけでOK
+  }
+
+  function pointerMove(e) {
+    if (!isTouching) return;
+    updateTouchPosition(e);
+  }
+
+  function pointerUp(e) {
+    isTouching = false;
+  }
+
+  function updateTouchPosition(e) {
+    let rect = canvas.getBoundingClientRect();
+    touchX = (e.clientX - rect.left) * (canvas.width / rect.width);
+    touchY = (e.clientY - rect.top) * (canvas.height / rect.height);
+  }
+
+  canvas.addEventListener('pointerdown', pointerDown);
+  canvas.addEventListener('pointermove', pointerMove);
+  canvas.addEventListener('pointerup', pointerUp);
+  canvas.addEventListener('pointercancel', pointerUp);
+  video.addEventListener('pointerdown', pointerDown);
+  video.addEventListener('pointermove', pointerMove);
+  video.addEventListener('pointerup', pointerUp);
+  video.addEventListener('pointercancel', pointerUp);
+
+  function drawLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 指が触れてる間は毎フレームパーティクル追加
+    if (isTouching) {
+      for (let i = 0; i < 5; i++) {
+        addParticle(touchX, touchY);
+      }
+    }
+
+    // パーティクル更新＆描画
+    for (let i = particles.length -1; i >= 0; i--) {
+      let p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.alpha -= 0.02;
+      p.radius *= 0.96;
+
+      if (p.alpha <= 0 || p.radius <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
+      ctx.fill();
+    }
+
+    requestAnimationFrame(drawLoop);
+  }
+</script>
+</body>
+</html>

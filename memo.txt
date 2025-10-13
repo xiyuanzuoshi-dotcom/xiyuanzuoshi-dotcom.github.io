@@ -1,0 +1,78 @@
+了解です！
+これまでのやりとりをまとめたメモを作成しました。将来の振り返りや作業の参考にどうぞ。
+
+---
+
+# 【まとめ】iPhone向けWebカメラ表示＆ARチャレンジ＆HTTPSローカル環境構築メモ
+
+---
+
+## 1. iPhoneのSafariでカメラ映像をライブ表示したい
+
+* `navigator.mediaDevices.getUserMedia({ video: true })` を使う。
+* iOS Safariはカメラアクセスの権限を厳しく管理している。
+* カメラが表示されない場合、以下を確認：
+
+  * Safariのカメラ権限がオンになっているか
+  * HTTPSまたはlocalhost/ローカルIPでアクセスしているか
+  * ブラウザの設定をリセット（履歴とWebサイトデータの削除）
+  * iPhoneの再起動
+  * 他のアプリでカメラが使えるか
+  * 動作テスト用サイト（例：[https://webrtc.github.io/samples/src/content/getusermedia/gum/）で試す](https://webrtc.github.io/samples/src/content/getusermedia/gum/）で試す)
+
+---
+
+## 2. Macでlocalhostではカメラが映るがIP指定で映らない問題
+
+* localhostは特別に「安全な環境」として扱われ、HTTPでもカメラアクセス可能。
+* IPアドレス（例：192.168.x.x）でアクセスするときは、**HTTPSが必須**。
+* HTTPのままだとブラウザがカメラアクセスを拒否する。
+
+---
+
+## 3. ローカル環境でHTTPSサーバーを立てる方法
+
+### mkcertを使ったローカル証明書の作成
+
+* Homebrewで`mkcert`と依存ツール`nss`をインストール。
+* `mkcert -install`でシステムにルート証明書をインストール。
+* `mkcert localhost 127.0.0.1 ::1` で証明書ファイルと秘密鍵を作成。
+* 作成された`localhost+2.pem`と`localhost+2-key.pem`をVS Code Live Serverで使う。
+
+### VS Code Live ServerのHTTPS設定
+
+* `settings.json`に下記設定を追加：
+
+```json
+{
+  "liveServer.settings.https": {
+    "enable": true,
+    "cert": "/Users/yourname/certs/localhost+2.pem",
+    "key": "/Users/yourname/certs/localhost+2-key.pem"
+  }
+}
+```
+
+* Live Serverを再起動してHTTPSサーバーを起動。
+* MacのローカルIPアドレスを調べ、iPhoneから
+
+```
+https://192.168.x.x:5500
+```
+
+にアクセス。
+
+* 初回は証明書警告が出る場合があるが、進めばOK。
+
+---
+
+## 4. その他のポイント
+
+* iPhoneのプライバシー設定でカメラ許可が表示されない場合は、SafariのキャッシュクリアやiPhoneの再起動、画面収録機能を試す。
+* カメラアクセスのトラブルはHTTPS未対応や権限設定ミスが多い。
+* HTTPS対応したローカル環境を作るのが最も確実。
+
+---
+
+必要な時に読み返して役立ててください！
+また何かあればいつでも聞いてね😊
