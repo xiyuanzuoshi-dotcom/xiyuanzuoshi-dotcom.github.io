@@ -3,32 +3,60 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>Mobile 3D Icons — Flick & Sensor & Effects</title>
+  <title>Mobile 3D Icons — Joystick & Sensor (Light Effects)</title>
   <style>
+    :root{--ui-bg:rgba(10,10,12,0.6);--btn:#222;--accent:#ffd166}
     html,body{height:100%;margin:0;background:#0b0b0f;color:#fff;font-family:system-ui,Segoe UI,Roboto,'Hiragino Kaku Gothic ProN',Meiryo;}
     #app{height:100%;display:flex;flex-direction:column}
-    header{padding:12px 16px;font-size:16px;background:linear-gradient(0deg,rgba(255,255,255,0.02),transparent);backdrop-filter:blur(6px);display:flex;justify-content:space-between;align-items:center;}
+    header{padding:10px 12px;font-size:15px;background:linear-gradient(0deg,rgba(255,255,255,0.02),transparent);backdrop-filter:blur(6px);display:flex;justify-content:space-between;align-items:center}
+    #controls{display:flex;gap:8px;align-items:center}
+    .ctrl-btn{background:var(--btn);color:#fff;border:1px solid #444;border-radius:8px;padding:6px 8px;font-size:13px}
     #canvas-wrap{flex:1;position:relative}
     canvas{display:block;width:100%;height:100%;touch-action:none}
     .hint{position:absolute;left:12px;bottom:12px;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,0.4);font-size:13px}
-    #sensor-toggle{background:#222;color:#fff;border:1px solid #555;border-radius:8px;padding:4px 10px;font-size:13px;}
+
+    /* joystick UI (right-bottom) */
+    #joystick-wrap{position:absolute;right:14px;bottom:18px;width:120px;height:120px;border-radius:50%;background:var(--ui-bg);display:flex;align-items:center;justify-content:center;touch-action:none;box-shadow:0 6px 18px rgba(0,0,0,0.6)}
+    #joystick-base{width:92%;height:92%;border-radius:50%;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;}
+    #stick{width:44px;height:44px;border-radius:50%;background:linear-gradient(180deg,#2b2b2b,#111);box-shadow:0 4px 10px rgba(0,0,0,0.6) inset;display:flex;align-items:center;justify-content:center;touch-action:none}
+    #stick::after{content:'';width:8px;height:8px;background:var(--accent);border-radius:50%}
+
+    /* small label for joystick on/off */
+    #joy-label{position:absolute;right:14px;bottom:146px;background:rgba(0,0,0,0.35);padding:6px 8px;border-radius:8px;font-size:12px}
+
+    /* top-right compact controls container */
+    #top-right{position:absolute;right:12px;top:10px;display:flex;flex-direction:column;gap:8px}
+    .small-toggle{background:rgba(0,0,0,0.45);border:1px solid #333;color:#fff;padding:6px 8px;border-radius:8px;font-size:12px}
   </style>
 </head>
 <body>
 <div id="app">
   <header>
-    3D Icons — フリックで回転
-    <button id="sensor-toggle">センサーOFF</button>
+    <div>3D Icons — フリック / ジョイスティック</div>
+    <div id="controls">
+      <button id="sensor-toggle" class="ctrl-btn">センサー OFF</button>
+      <button id="joystick-toggle" class="ctrl-btn">ジョイスティック ON</button>
+      <button id="effects-toggle" class="ctrl-btn">エフェクト: 弱</button>
+    </div>
   </header>
+
   <div id="canvas-wrap">
     <canvas id="c"></canvas>
-    <div class="hint">フリック or センサーで回してみてください</div>
+    <div class="hint">フリック or ジョイスティックで回してみてください</div>
+
+    <div id="top-right"></div>
+
+    <div id="joy-label">ジョイスティック: ON</div>
+    <div id="joystick-wrap" style="display:block">
+      <div id="joystick-base"><div id="stick"></div></div>
+    </div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 <script>
 (() => {
+  // ==== basic three.js setup ====
   const canvas = document.getElementById('c');
   const renderer = new THREE.WebGLRenderer({canvas, antialias: true, alpha: true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -36,31 +64,20 @@
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0b0b0f);
-
   const camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight - document.querySelector('header').offsetHeight), 0.1, 2000);
-  camera.position.set(0, 0, 8);
+  camera.position.set(0,0,8);
 
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.8);
-  scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.6);
-  dir.position.set(5, 10, 7);
-  scene.add(dir);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.8); scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(5,10,7); scene.add(dir);
 
-  const group = new THREE.Group();
-  scene.add(group);
+  const group = new THREE.Group(); scene.add(group);
 
   function makeIcon(svgText, color=0xffffff){
     const svg = `data:image/svg+xml;utf8,${encodeURIComponent(svgText)}`;
     const tex = new THREE.TextureLoader().load(svg);
     tex.encoding = THREE.sRGBEncoding;
-
-    const geometry = new THREE.BoxGeometry(1.6, 1.6, 0.28);
-    const material = new THREE.MeshStandardMaterial({
-      color: color,
-      metalness: 0.05,
-      roughness: 0.4,
-      map: tex
-    });
+    const geometry = new THREE.BoxGeometry(1.6,1.6,0.28);
+    const material = new THREE.MeshStandardMaterial({color,metalness:0.05,roughness:0.4,map:tex});
     return new THREE.Mesh(geometry, material);
   }
 
@@ -69,270 +86,148 @@
   const svgChat = `<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 24 24'><path fill='#ffffff' d='M20 2H4c-1.1 0-2 .9-2 2v14l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z'/></svg>`;
 
   const icons = [
-    {svg: svgHeart, color: 0xff5c8a},
-    {svg: svgStar, color: 0xffd166},
-    {svg: svgChat, color: 0x7bd389},
-    {svg: svgHeart, color: 0x82aaff},
-    {svg: svgStar, color: 0xd6b3ff}
+    {svg:svgHeart,color:0xff5c8a},{svg:svgStar,color:0xffd166},{svg:svgChat,color:0x7bd389},{svg:svgHeart,color:0x82aaff},{svg:svgStar,color:0xd6b3ff}
   ];
+  icons.forEach((it,i)=>{const m=makeIcon(it.svg,it.color);const r=3,th=(i/icons.length)*Math.PI*2;m.position.set(Math.sin(th)*r,Math.cos(th)*0.6,Math.cos(th)*r*0.5);m.rotation.x=(Math.random()-0.5)*0.15;m.rotation.y=(Math.random()-0.5)*0.3;group.add(m);});
 
-  icons.forEach((it, i) => {
-    const m = makeIcon(it.svg, it.color);
-    const radius = 3.0;
-    const theta = (i / icons.length) * Math.PI * 2;
-    m.position.set(Math.sin(theta) * radius, Math.cos(theta) * 0.6, Math.cos(theta) * radius * 0.5);
-    m.rotation.x = (Math.random() - 0.5) * 0.15;
-    m.rotation.y = (Math.random() - 0.5) * 0.3;
-    group.add(m);
-  });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(40,40), new THREE.MeshStandardMaterial({color:0x07070a,metalness:0,roughness:1})); ground.rotation.x=-Math.PI/2; ground.position.y=-3.2; scene.add(ground);
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(40, 40),
-    new THREE.MeshStandardMaterial({color:0x07070a, metalness:0, roughness:1})
-  );
-  ground.rotation.x = -Math.PI/2;
-  ground.position.y = -3.2;
-  scene.add(ground);
+  // ==== interaction vars ====
+  let isDown=false,lastX=0,lastY=0,vx=0,vy=0;
+  const DRAG=0.95,SPEED=0.008, maxVel=0.12;
 
-  // --- interaction variables ---
-  let isDown = false, lastX = 0, lastY = 0, vx = 0, vy = 0;
-  const DRAG = 0.95, SPEED = 0.008, maxVel = 0.12;
+  function getEventPoint(e){ if(e.touches && e.touches.length) return {x:e.touches[0].clientX,y:e.touches[0].clientY}; return {x:e.clientX,y:e.clientY}; }
+  function onDown(e){ isDown=true; const p=getEventPoint(e); lastX=p.x; lastY=p.y; vx=vy=0; }
+  function onMove(e){ if(!isDown) return; e.preventDefault(); const p=getEventPoint(e); const dx=p.x-lastX; const dy=p.y-lastY; lastX=p.x; lastY=p.y; group.rotation.y += dx*SPEED; group.rotation.x += dy*SPEED; vx = THREE.MathUtils.clamp(dx*SPEED*0.5 + vx*0.5, -maxVel, maxVel); vy = THREE.MathUtils.clamp(dy*SPEED*0.5 + vy*0.5, -maxVel, maxVel); }
+  function onUp(){ isDown=false; }
 
-  function getEventPoint(e){
-    if(e.touches && e.touches.length) return {x: e.touches[0].clientX, y: e.touches[0].clientY};
-    return {x: e.clientX, y: e.clientY};
-  }
+  canvas.addEventListener('touchstart', onDown, {passive:false}); canvas.addEventListener('touchmove', onMove, {passive:false}); canvas.addEventListener('touchend', onUp);
+  canvas.addEventListener('pointerdown', onDown); window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
 
-  function onDown(e){isDown=true;const p=getEventPoint(e);lastX=p.x;lastY=p.y;vx=vy=0;}
-  function onMove(e){if(!isDown)return;e.preventDefault();const p=getEventPoint(e);const dx=p.x-lastX;const dy=p.y-lastY;lastX=p.x;lastY=p.y;group.rotation.y+=dx*SPEED;group.rotation.x+=dy*SPEED;vx=THREE.MathUtils.clamp(dx*SPEED*0.5+vx*0.5,-maxVel,maxVel);vy=THREE.MathUtils.clamp(dy*SPEED*0.5+vy*0.5,-maxVel,maxVel);}  
-  function onUp(){isDown=false;}
+  window.addEventListener('resize', ()=>{ const h = window.innerHeight - document.querySelector('header').offsetHeight; renderer.setSize(window.innerWidth,h); camera.aspect = window.innerWidth / h; camera.updateProjectionMatrix(); });
 
-  canvas.addEventListener('touchstart',onDown,{passive:false});
-  canvas.addEventListener('touchmove',onMove,{passive:false});
-  canvas.addEventListener('touchend',onUp);
-  canvas.addEventListener('pointerdown',onDown);
-  window.addEventListener('pointermove',onMove);
-  window.addEventListener('pointerup',onUp);
-
-  function resize(){
-    const h = window.innerHeight - document.querySelector('header').offsetHeight;
-    renderer.setSize(window.innerWidth, h);
-    camera.aspect = window.innerWidth / h;
-    camera.updateProjectionMatrix();
-  }
-  window.addEventListener('resize', resize);
-
-  // --- sensor control ---
-  let useSensor = false;
-  let sensorBeta = 0, sensorGamma = 0;
-  let sensorSmooth = {x:0, y:0};
+  // ==== sensor control ====
+  let useSensor=false, sensorBeta=0, sensorGamma=0, sensorSmooth={x:0,y:0};
   const sensorBtn = document.getElementById('sensor-toggle');
-
-  sensorBtn.addEventListener('click', async () => {
-    if (!useSensor) {
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-          const permission = await DeviceOrientationEvent.requestPermission();
-          if (permission !== 'granted') return alert('センサーアクセスが許可されませんでした');
-        } catch (e) {return alert('センサーアクセスに失敗しました');}
+  sensorBtn.addEventListener('click', async ()=>{
+    if(!useSensor){
+      if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+        try{ const permission = await DeviceOrientationEvent.requestPermission(); if(permission !== 'granted') return alert('センサーアクセスが許可されませんでした'); }catch(e){ return alert('センサーアクセスに失敗しました'); }
       }
       window.addEventListener('deviceorientation', handleOrientation);
-      useSensor = true;
-      sensorBtn.textContent = 'センサーON';
+      useSensor = true; sensorBtn.textContent = 'センサー ON';
+      // disable joystick when sensor active logically (joystick can still be visible)
     } else {
       window.removeEventListener('deviceorientation', handleOrientation);
-      useSensor = false;
-      sensorBtn.textContent = 'センサーOFF';
+      useSensor = false; sensorBtn.textContent = 'センサー OFF';
     }
   });
-  function handleOrientation(e){sensorBeta=e.beta||0;sensorGamma=e.gamma||0;}
+  function handleOrientation(e){ sensorBeta = e.beta || 0; sensorGamma = e.gamma || 0; }
 
-  // --- rotation tracking for effects ---
-  let totalRotation = 0; // accumulated absolute rotation (radians)
-  lastY = group.rotation.y;
+  // ==== joystick UI & logic ====
+  const joyWrap = document.getElementById('joystick-wrap');
+  const stick = document.getElementById('stick');
+  const joyLabel = document.getElementById('joy-label');
+  const joyToggle = document.getElementById('joystick-toggle');
+  let joystickVisible = true; // show by default (standard: right-bottom)
+  let joystickEnabled = true; // whether joystick influences rotation
+  let joystickActive = false;
+  let stickCenter = {x:0,y:0}, maxRadius = 40; // pixels
+  const JOY_SENS = 0.018; // sensitivity mapping to rotation
+  // init center pos after layout
+  function calcStickCenter(){ const rect = joyWrap.getBoundingClientRect(); stickCenter.x = rect.left + rect.width/2; stickCenter.y = rect.top + rect.height/2; maxRadius = rect.width*0.36; }
+  setTimeout(calcStickCenter,200);
+  window.addEventListener('resize', calcStickCenter);
+
+  joyToggle.addEventListener('click', ()=>{
+    joystickVisible = !joystickVisible;
+    joyWrap.style.display = joystickVisible ? 'block' : 'none';
+    joyLabel.textContent = 'ジョイスティック: ' + (joystickVisible ? 'ON' : 'OFF');
+    joyToggle.textContent = joystickVisible ? 'ジョイスティック ON' : 'ジョイスティック OFF';
+  });
+
+  // pointer handling for joystick
+  function joyPointerDown(e){ e.preventDefault(); joystickActive = true; stick.setPointerCapture && stick.setPointerCapture(e.pointerId); }
+  function joyPointerMove(e){ if(!joystickActive) return; const dx = e.clientX - stickCenter.x; const dy = e.clientY - stickCenter.y; const d = Math.sqrt(dx*dx+dy*dy); const r = Math.min(d, maxRadius); const nx = (dx / (d||1)) * r; const ny = (dy / (d||1)) * r; stick.style.transform = `translate(${nx}px, ${ny}px)`; currentJoy = {x: nx / maxRadius, y: ny / maxRadius}; }
+  function joyPointerUp(e){ joystickActive = false; stick.style.transition = 'transform 300ms cubic-bezier(.2,.9,.2,1)'; stick.style.transform = `translate(0px,0px)`; currentJoy = {x:0,y:0}; setTimeout(()=>stick.style.transition='0s',350); }
+
+  stick.addEventListener('pointerdown', joyPointerDown); window.addEventListener('pointermove', joyPointerMove); window.addEventListener('pointerup', joyPointerUp);
+
+  // toggle whether joystick actually drives rotation (separate from visibility)
+  joyToggle.addEventListener('contextmenu', (e)=>{ e.preventDefault(); });
+  // quick click toggles enable/disable influence
+  joyToggle.addEventListener('dblclick', ()=>{ joystickEnabled = !joystickEnabled; joyToggle.textContent = joystickEnabled ? 'ジョイスティック ON' : 'ジョイスティック (無効)'; });
+
+  let currentJoy = {x:0,y:0};
+
+  // ==== effects (tuned down) ====
+  let effectsMode = 'weak'; // 'weak' or 'strong'
+  const effectsBtn = document.getElementById('effects-toggle');
+  effectsBtn.addEventListener('click', ()=>{
+    effectsMode = effectsMode === 'weak' ? 'strong' : 'weak';
+    effectsBtn.textContent = 'エフェクト: ' + (effectsMode === 'weak' ? '弱' : '強');
+  });
+
+  // rotation tracking for effects
+  let totalRotation = 0;
   let spinCount = 0;
+  let lastYRotation = group.rotation.y;
 
-  // --- particle / effect management ---
+  // particle/trail containers
   const activeParticleSystems = [];
   const trailPoints = [];
-  const trailMax = 40; // how many trail dots to keep
-  const trailThreshold = 0.02; // velocity threshold to start leaving a trail
+  const trailMax = 18; // shorter
+  const trailThreshold = 0.035; // higher threshold: less frequent
 
-  // helper: small circular texture for particles
-  function makeCircleTexture(size=64){
-    const c = document.createElement('canvas'); c.width=c.height=size;
-    const ctx = c.getContext('2d');
-    const g = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
-    g.addColorStop(0,'rgba(255,255,255,1)');
-    g.addColorStop(0.5,'rgba(255,255,255,0.6)');
-    g.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.fillStyle=g; ctx.fillRect(0,0,size,size);
-    const tex = new THREE.CanvasTexture(c);
-    tex.encoding = THREE.sRGBEncoding;
-    return tex;
-  }
-  const particleTexture = makeCircleTexture(64);
+  function makeCircleTexture(size=48){ const c=document.createElement('canvas'); c.width=c.height=size; const ctx=c.getContext('2d'); const g=ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2); g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.6,'rgba(255,255,255,0.6)'); g.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,size,size); const tex=new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding; return tex; }
+  const particleTexture = makeCircleTexture(48);
 
-  // create a short ring effect (used every rotation)
-  function createRing(color=0xffffcc){
-    const geometry = new THREE.RingGeometry(0.9, 1.05, 64);
-    const material = new THREE.MeshBasicMaterial({color, transparent:true, opacity:0.9, side:THREE.DoubleSide});
-    const ring = new THREE.Mesh(geometry, material);
-    ring.rotation.x = Math.PI/2;
-    ring.position.set(0, 0, 0.2);
-    group.add(ring);
+  function createRing(color=0xffffcc){ const geometry=new THREE.RingGeometry(0.9,1.03,48); const material=new THREE.MeshBasicMaterial({color,transparent:true,opacity:(effectsMode==='weak'?0.35:0.7),side:THREE.DoubleSide}); const ring=new THREE.Mesh(geometry,material); ring.rotation.x=Math.PI/2; ring.position.set(0,0,0.18); group.add(ring); let t=0; const tick=()=>{ t+=0.03; const s=1 + t * (effectsMode==='weak'?1.2:2.5); ring.scale.set(s,s,s); ring.material.opacity = Math.max(0, (effectsMode==='weak'?0.35:0.7) - t * (effectsMode==='weak'?0.9:0.7)); if(t<1.2) requestAnimationFrame(tick); else group.remove(ring); }; tick(); }
 
-    let t = 0;
-    const tick = () => {
-      t += 0.02;
-      const s = 1 + t * 2.5;
-      ring.scale.set(s, s, s);
-      ring.material.opacity = Math.max(0, 0.9 - t);
-      if (t < 1) requestAnimationFrame(tick);
-      else group.remove(ring);
-    };
-    tick();
-  }
+  function createBurst(color=0xfff1a6, count=8, speed=0.045, lifetime=0.9){ const positions = new Float32Array(count*3); const velocities = new Float32Array(count*3); for(let i=0;i<count;i++){ positions[i*3+0]=0; positions[i*3+1]=0; positions[i*3+2]=0; const theta = Math.random()*Math.PI*2; const phi = Math.acos(2*Math.random()-1); const r = 0.8 + Math.random()*0.6; velocities[i*3+0] = Math.cos(theta)*Math.sin(phi)*speed*r; velocities[i*3+1] = Math.sin(theta)*Math.sin(phi)*speed*r; velocities[i*3+2] = Math.cos(phi)*speed*r; } const geom=new THREE.BufferGeometry(); geom.setAttribute('position', new THREE.BufferAttribute(positions,3)); const mat=new THREE.PointsMaterial({size:(effectsMode==='weak'?0.08:0.14), map:particleTexture, transparent:true, opacity:(effectsMode==='weak'?0.85:1.0), depthWrite:false}); mat.color=new THREE.Color(color); const points=new THREE.Points(geom,mat); points.position.copy(group.position); points.rotation.copy(group.rotation); scene.add(points); activeParticleSystems.push({points,velocities,age:0,lifetime,geom,mat}); }
 
-  // create a burst particle system (Points) at center of group
-  function createBurst(color=0xfff1a6, count=32, speed=0.06, lifetime=1.0){
-    const positions = new Float32Array(count*3);
-    const velocities = new Float32Array(count*3);
-    for(let i=0;i<count;i++){
-      positions[i*3+0]=0; positions[i*3+1]=0; positions[i*3+2]=0;
-      // random spherical velocity
-      const theta = Math.random()*Math.PI*2;
-      const phi = Math.acos(2*Math.random()-1);
-      const r = 1 + Math.random()*0.5;
-      velocities[i*3+0] = Math.cos(theta)*Math.sin(phi)*speed*r;
-      velocities[i*3+1] = Math.sin(theta)*Math.sin(phi)*speed*r;
-      velocities[i*3+2] = Math.cos(phi)*speed*r;
-    }
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.BufferAttribute(positions,3));
-    const mat = new THREE.PointsMaterial({size:0.12, map:particleTexture, transparent:true, opacity:1.0, depthWrite:false});
-    mat.color = new THREE.Color(color);
-    const points = new THREE.Points(geom, mat);
-    points.position.copy(group.position);
-    points.rotation.copy(group.rotation);
-    scene.add(points);
+  function createExplosion(){ createBurst(0xffe27a, effectsMode==='weak'?18:60, 0.09, effectsMode==='weak'?1.0:1.6); createRing(0xfff4d6); }
 
-    activeParticleSystems.push({points, velocities, age:0, lifetime, geom, mat});
-  }
+  function leaveTrail(){ const geom=new THREE.BufferGeometry(); const pos=new Float32Array([0,0,0]); geom.setAttribute('position', new THREE.BufferAttribute(pos,3)); const mat=new THREE.PointsMaterial({size:0.12,map:particleTexture,transparent:true,opacity:0.8,depthWrite:false}); const p=new THREE.Points(geom,mat); p.position.set(0,0,0.36); group.add(p); trailPoints.push({mesh:p,age:0}); if(trailPoints.length>trailMax){ const old=trailPoints.shift(); if(old){ group.remove(old.mesh); } } }
 
-  // big explosion for every 10 spins
-  function createExplosion(){
-    createBurst(0xffe27a, 120, 0.12, 1.6);
-    // also a flash ring
-    createRing(0xfff4d6);
-  }
+  function triggerRotationEffects(){ createRing(0xffffcc); createBurst(0xfff1a6, 8, 0.045, 0.9); if(spinCount>0 && spinCount%10===0){ createExplosion(); } }
 
-  // trail: leave small fading points along the rotation when spinning fast
-  function leaveTrail(){
-    const max = trailMax;
-    // create a single point at group's current orientation
-    const geom = new THREE.BufferGeometry();
-    const pos = new Float32Array([0,0,0]);
-    geom.setAttribute('position', new THREE.BufferAttribute(pos,3));
-    const mat = new THREE.PointsMaterial({size:0.18, map:particleTexture, transparent:true, opacity:0.9, depthWrite:false});
-    const p = new THREE.Points(geom, mat);
-    // position a bit forward so it's visible
-    p.position.set(0,0,0.4);
-    // attach to group so it rotates visually consistent
-    group.add(p);
-    trailPoints.push({mesh:p, age:0});
-    if(trailPoints.length>max){
-      const old = trailPoints.shift(); if(old){ group.remove(old.mesh); }
-    }
-  }
-
-  // main trigger called on each full rotation
-  function triggerRotationEffects(){
-    // 1 & 2: ring + small burst
-    createRing(0xffffcc);
-    createBurst(0xfff1a6, 36, 0.07, 1.0);
-    // if spinCount is multiple of 10 -> big explosion
-    if (spinCount > 0 && spinCount % 10 === 0) {
-      createExplosion();
-    }
-  }
-
-  // --- animation loop ---
-  function animate(){
-    requestAnimationFrame(animate);
-
+  // ==== main animation loop ====
+  function animate(){ requestAnimationFrame(animate);
     // sensor control
-    if(useSensor){
-      sensorSmooth.x += ((sensorBeta/180*Math.PI) - sensorSmooth.x) * 0.05;
-      sensorSmooth.y += ((sensorGamma/90*Math.PI) - sensorSmooth.y) * 0.05;
-      group.rotation.x = sensorSmooth.x;
-      group.rotation.y = sensorSmooth.y;
-      vx = 0; vy = 0; // stop inertia while sensor active
-    } else if(!isDown){
-      group.rotation.y += vx;
-      group.rotation.x += vy;
-      vx *= DRAG; vy *= DRAG;
-      if(Math.abs(vx)<0.00001)vx=0;
-      if(Math.abs(vy)<0.00001)vy=0;
+    if(useSensor){ sensorSmooth.x += ((sensorBeta/180*Math.PI)-sensorSmooth.x)*0.06; sensorSmooth.y += ((sensorGamma/90*Math.PI)-sensorSmooth.y)*0.06; group.rotation.x = sensorSmooth.x; group.rotation.y = sensorSmooth.y; vx=0; vy=0; }
+    else {
+      // joystick influence has priority when visible & enabled
+      if(joystickVisible && joystickEnabled && (Math.abs(currentJoy.x)>0.001 || Math.abs(currentJoy.y)>0.001)){
+        // map joystick [-1..1] -> rotation increments
+        const joyY = -currentJoy.x * JOY_SENS; // horizontal joystick controls Y-rotation (left/right)
+        const joyX = currentJoy.y * JOY_SENS;  // vertical joystick controls X-rotation (up/down)
+        group.rotation.y += joyY; group.rotation.x += joyX;
+        // small decay to inertia values
+        vx = joyY * 0.6; vy = joyX * 0.6;
+      } else if(!isDown){
+        group.rotation.y += vx; group.rotation.x += vy; vx *= DRAG; vy *= DRAG; if(Math.abs(vx)<0.00001) vx=0; if(Math.abs(vy)<0.00001) vy=0;
+      }
     }
 
-    // --- rotation accumulation for full-rotation detection ---
-    const dy = group.rotation.y - lastY;
-    totalRotation += Math.abs(dy);
-    lastY = group.rotation.y;
-    // when totalRotation exceeds one full rotation
-    const full = Math.PI*2;
-    while(totalRotation >= full){
-      totalRotation -= full;
-      spinCount++;
-      triggerRotationEffects();
-    }
+    // rotation accumulation
+    const dy = group.rotation.y - lastYRotation; totalRotation += Math.abs(dy); lastYRotation = group.rotation.y; const full = Math.PI*2; while(totalRotation >= full){ totalRotation -= full; spinCount++; triggerRotationEffects(); }
 
-    // --- create trail when spinning quickly ---
+    // trail when spinning faster
     const spinSpeed = Math.abs(vx) + Math.abs(vy);
-    if(spinSpeed > trailThreshold){
-      // leave a trail point occasionally depending on speed
-      if(Math.random() < Math.min(0.6, spinSpeed*40)) leaveTrail();
-    }
+    if(spinSpeed > trailThreshold){ if(Math.random() < Math.min(0.45, spinSpeed*30)) leaveTrail(); }
 
-    // update active particle systems
-    for(let i=activeParticleSystems.length-1;i>=0;i--){
-      const sys = activeParticleSystems[i];
-      sys.age += 0.016;
-      const positions = sys.geom.attributes.position.array;
-      for(let j=0;j<positions.length/3;j++){
-        positions[j*3+0] += sys.velocities[j*3+0];
-        positions[j*3+1] += sys.velocities[j*3+1];
-        positions[j*3+2] += sys.velocities[j*3+2];
-        // apply slight gravity
-        sys.velocities[j*3+1] -= 0.0015;
-        // damping
-        sys.velocities[j*3+0] *= 0.995; sys.velocities[j*3+1] *= 0.995; sys.velocities[j*3+2] *= 0.995;
-      }
-      sys.geom.attributes.position.needsUpdate = true;
-      // fade opacity
-      const t = sys.age / sys.lifetime;
-      sys.mat.opacity = Math.max(0, 1 - t);
-      if(sys.age > sys.lifetime){
-        scene.remove(sys.points);
-        sys.geom.dispose(); sys.mat.dispose();
-        activeParticleSystems.splice(i,1);
-      }
-    }
+    // update particle systems
+    for(let i=activeParticleSystems.length-1;i>=0;i--){ const sys=activeParticleSystems[i]; sys.age += 0.016; const positions = sys.geom.attributes.position.array; for(let j=0;j<positions.length/3;j++){ positions[j*3+0] += sys.velocities[j*3+0]; positions[j*3+1] += sys.velocities[j*3+1]; positions[j*3+2] += sys.velocities[j*3+2]; sys.velocities[j*3+1] -= 0.0012; sys.velocities[j*3+0] *= 0.996; sys.velocities[j*3+1] *= 0.996; sys.velocities[j*3+2] *= 0.996; } sys.geom.attributes.position.needsUpdate=true; const t = sys.age / sys.lifetime; sys.mat.opacity = Math.max(0, (effectsMode==='weak'?0.85:1) - t); if(sys.age > sys.lifetime){ scene.remove(sys.points); sys.geom.dispose(); sys.mat.dispose(); activeParticleSystems.splice(i,1); } }
 
-    // update trail points (fade and remove)
-    for(let i=trailPoints.length-1;i>=0;i--){
-      const tp = trailPoints[i];
-      tp.age += 0.02;
-      tp.mesh.material.opacity = Math.max(0, 0.9 - tp.age);
-      tp.mesh.scale.setScalar(1 + tp.age*2);
-      if(tp.age > 1){ group.remove(tp.mesh); trailPoints.splice(i,1); }
-    }
+    // update trail fade
+    for(let i=trailPoints.length-1;i>=0;i--){ const tp=trailPoints[i]; tp.age += 0.03; tp.mesh.material.opacity = Math.max(0, 0.8 - tp.age*1.2); tp.mesh.scale.setScalar(1 + tp.age*1.5); if(tp.age > 0.9){ group.remove(tp.mesh); trailPoints.splice(i,1); } }
 
-    renderer.render(scene, camera);
+    renderer.render(scene,camera);
   }
 
-  resize();
+  // initial layout adjustments
+  setTimeout(()=>{ const h = window.innerHeight - document.querySelector('header').offsetHeight; renderer.setSize(window.innerWidth,h); camera.aspect = window.innerWidth/h; camera.updateProjectionMatrix(); calcStickCenter(); },200);
   animate();
 
 })();
