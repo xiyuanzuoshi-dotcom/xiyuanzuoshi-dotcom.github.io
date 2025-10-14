@@ -3,26 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>Mobile 3D Icons — Flick to rotate</title>
+  <title>Mobile 3D Icons — Flick & Sensor</title>
   <style>
     html,body{height:100%;margin:0;background:#0b0b0f;color:#fff;font-family:system-ui,Segoe UI,Roboto,'Hiragino Kaku Gothic ProN',Meiryo;}
     #app{height:100%;display:flex;flex-direction:column}
-    header{padding:12px 16px;font-size:16px;background:linear-gradient(0deg,rgba(255,255,255,0.02),transparent);backdrop-filter:blur(6px)}
+    header{padding:12px 16px;font-size:16px;background:linear-gradient(0deg,rgba(255,255,255,0.02),transparent);backdrop-filter:blur(6px);display:flex;justify-content:space-between;align-items:center;}
     #canvas-wrap{flex:1;position:relative}
     canvas{display:block;width:100%;height:100%;touch-action:none}
     .hint{position:absolute;left:12px;bottom:12px;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,0.4);font-size:13px}
+    #sensor-toggle{background:#222;color:#fff;border:1px solid #555;border-radius:8px;padding:4px 10px;font-size:13px;}
   </style>
 </head>
 <body>
 <div id="app">
-  <header>3D Icons — フリックで回転 (モバイル向け)</header>
+  <header>
+    3D Icons — フリックで回転
+    <button id="sensor-toggle">センサーOFF</button>
+  </header>
   <div id="canvas-wrap">
     <canvas id="c"></canvas>
-    <div class="hint">フリックで回してみてください</div>
+    <div class="hint">フリック or センサーで回してみてください</div>
   </div>
 </div>
 
-<!-- three.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 <script>
 (() => {
@@ -37,20 +40,16 @@
   const camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight - document.querySelector('header').offsetHeight), 0.1, 2000);
   camera.position.set(0, 0, 8);
 
-  // Lights
   const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.8);
   scene.add(hemi);
   const dir = new THREE.DirectionalLight(0xffffff, 0.6);
   dir.position.set(5, 10, 7);
   scene.add(dir);
 
-  // Container for icons
   const group = new THREE.Group();
   scene.add(group);
 
-  // Helper: create a simple '3D icon' using rounded-ish box and an SVG texture
   function makeIcon(svgText, color=0xffffff){
-    // convert svg to data url
     const svg = `data:image/svg+xml;utf8,${encodeURIComponent(svgText)}`;
     const tex = new THREE.TextureLoader().load(svg);
     tex.encoding = THREE.sRGBEncoding;
@@ -62,27 +61,12 @@
       roughness: 0.4,
       map: tex
     });
-    const mesh = new THREE.Mesh(geometry, material);
-    // slightly bevel-like appearance by adding rim light (using emissive)
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    return mesh;
+    return new THREE.Mesh(geometry, material);
   }
 
-  // Small SVG icons (inline) — replace or add your own
-  const svgHeart = `
-  <svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 24 24'>
-    <rect width='100%' height='100%' fill='none'/>
-    <path fill='#ffffff' d='M12 21s-7-4.93-9.33-8.02C-0.02 8.99 3.6 4 8.5 4c2.04 0 3.6 1.02 3.5 2.5C12.6 5.02 14.16 4 16.2 4 21.1 4 24.62 8.99 21.33 12.98 19 16.07 12 21 12 21z'/>
-  </svg>`;
-  const svgStar = `
-  <svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 24 24'>
-    <path fill='#ffffff' d='M12 .587l3.668 7.431L23 9.587l-5.5 5.362L19.335 24 12 20.01 4.665 24 6.5 14.949 1 9.587l7.332-1.569z'/>
-  </svg>`;
-  const svgChat = `
-  <svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 24 24'>
-    <path fill='#ffffff' d='M20 2H4c-1.1 0-2 .9-2 2v14l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z'/>
-  </svg>`;
+  const svgHeart = `<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 24 24'><path fill='#ffffff' d='M12 21s-7-4.93-9.33-8.02C-0.02 8.99 3.6 4 8.5 4c2.04 0 3.6 1.02 3.5 2.5C12.6 5.02 14.16 4 16.2 4 21.1 4 24.62 8.99 21.33 12.98 19 16.07 12 21 12 21z'/></svg>`;
+  const svgStar = `<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 24 24'><path fill='#ffffff' d='M12 .587l3.668 7.431L23 9.587l-5.5 5.362L19.335 24 12 20.01 4.665 24 6.5 14.949 1 9.587l7.332-1.569z'/></svg>`;
+  const svgChat = `<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 24 24'><path fill='#ffffff' d='M20 2H4c-1.1 0-2 .9-2 2v14l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z'/></svg>`;
 
   const icons = [
     {svg: svgHeart, color: 0xff5c8a},
@@ -94,73 +78,41 @@
 
   icons.forEach((it, i) => {
     const m = makeIcon(it.svg, it.color);
-    // arrange in a circular layout
     const radius = 3.0;
     const theta = (i / icons.length) * Math.PI * 2;
     m.position.set(Math.sin(theta) * radius, Math.cos(theta) * 0.6, Math.cos(theta) * radius * 0.5);
-    // slight random tilt
     m.rotation.x = (Math.random() - 0.5) * 0.15;
     m.rotation.y = (Math.random() - 0.5) * 0.3;
     group.add(m);
   });
 
-  // Ground subtle plane for depth
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(40, 40),
     new THREE.MeshStandardMaterial({color:0x07070a, metalness:0, roughness:1})
   );
   ground.rotation.x = -Math.PI/2;
   ground.position.y = -3.2;
-  ground.receiveShadow = false;
   scene.add(ground);
 
-  // Controls: flick to rotate with inertia
-  let isDown = false;
-  let lastX = 0, lastY = 0;
-  let vx = 0, vy = 0; // angular velocity
-  const DRAG = 0.95; // inertia damping per frame
-  const SPEED = 0.008; // sensitivity
-  const maxVel = 0.12;
+  let isDown = false, lastX = 0, lastY = 0, vx = 0, vy = 0;
+  const DRAG = 0.95, SPEED = 0.008, maxVel = 0.12;
 
   function getEventPoint(e){
     if(e.touches && e.touches.length) return {x: e.touches[0].clientX, y: e.touches[0].clientY};
     return {x: e.clientX, y: e.clientY};
   }
 
-  function onDown(e){
-    isDown = true;
-    const p = getEventPoint(e);
-    lastX = p.x; lastY = p.y;
-    vx = vy = 0; // stop inertia while dragging
-  }
-  function onMove(e){
-    if(!isDown) return;
-    e.preventDefault();
-    const p = getEventPoint(e);
-    const dx = p.x - lastX;
-    const dy = p.y - lastY;
-    lastX = p.x; lastY = p.y;
-    // rotate group: horizontal drag -> rotate around Y, vertical drag -> rotate around X
-    group.rotation.y += dx * SPEED;
-    group.rotation.x += dy * SPEED;
+  function onDown(e){isDown=true;const p=getEventPoint(e);lastX=p.x;lastY=p.y;vx=vy=0;}
+  function onMove(e){if(!isDown)return;e.preventDefault();const p=getEventPoint(e);const dx=p.x-lastX;const dy=p.y-lastY;lastX=p.x;lastY=p.y;group.rotation.y+=dx*SPEED;group.rotation.x+=dy*SPEED;vx=THREE.MathUtils.clamp(dx*SPEED*0.5+vx*0.5,-maxVel,maxVel);vy=THREE.MathUtils.clamp(dy*SPEED*0.5+vy*0.5,-maxVel,maxVel);}
+  function onUp(){isDown=false;}
 
-    // update velocities for inertia (smoothed)
-    vx = THREE.MathUtils.clamp(dx * SPEED * 0.5 + vx * 0.5, -maxVel, maxVel);
-    vy = THREE.MathUtils.clamp(dy * SPEED * 0.5 + vy * 0.5, -maxVel, maxVel);
-  }
-  function onUp(e){
-    isDown = false;
-    // on release, vx/vy already set — continue in animation loop
-  }
+  canvas.addEventListener('touchstart',onDown,{passive:false});
+  canvas.addEventListener('touchmove',onMove,{passive:false});
+  canvas.addEventListener('touchend',onUp);
+  canvas.addEventListener('pointerdown',onDown);
+  window.addEventListener('pointermove',onMove);
+  window.addEventListener('pointerup',onUp);
 
-  canvas.addEventListener('touchstart', onDown, {passive:false});
-  canvas.addEventListener('touchmove', onMove, {passive:false});
-  canvas.addEventListener('touchend', onUp);
-  canvas.addEventListener('pointerdown', onDown);
-  window.addEventListener('pointermove', onMove);
-  window.addEventListener('pointerup', onUp);
-
-  // Handle resizing
   function resize(){
     const h = window.innerHeight - document.querySelector('header').offsetHeight;
     renderer.setSize(window.innerWidth, h);
@@ -169,26 +121,46 @@
   }
   window.addEventListener('resize', resize);
 
-  // animation loop
+  // === センサー連動 ===
+  let useSensor = false;
+  let sensorBeta = 0, sensorGamma = 0;
+  let sensorSmooth = {x:0, y:0};
+  const sensorBtn = document.getElementById('sensor-toggle');
+
+  sensorBtn.addEventListener('click', async () => {
+    if (!useSensor) {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const permission = await DeviceOrientationEvent.requestPermission();
+          if (permission !== 'granted') return alert('センサーアクセスが許可されませんでした');
+        } catch (e) {return alert('センサーアクセスに失敗しました');}
+      }
+      window.addEventListener('deviceorientation', handleOrientation);
+      useSensor = true;
+      sensorBtn.textContent = 'センサーON';
+    } else {
+      window.removeEventListener('deviceorientation', handleOrientation);
+      useSensor = false;
+      sensorBtn.textContent = 'センサーOFF';
+    }
+  });
+
+  function handleOrientation(e){sensorBeta=e.beta||0;sensorGamma=e.gamma||0;}
+
   function animate(){
     requestAnimationFrame(animate);
-
-    // apply inertia when not dragging
-    if(!isDown){
-      // apply velocities
+    if(useSensor){
+      sensorSmooth.x += ((sensorBeta/180*Math.PI) - sensorSmooth.x) * 0.05;
+      sensorSmooth.y += ((sensorGamma/90*Math.PI) - sensorSmooth.y) * 0.05;
+      group.rotation.x = sensorSmooth.x;
+      group.rotation.y = sensorSmooth.y;
+    } else if(!isDown){
       group.rotation.y += vx;
       group.rotation.x += vy;
-      // damp
-      vx *= DRAG;
-      vy *= DRAG;
-      // tiny clamp to zero
-      if(Math.abs(vx) < 0.00001) vx = 0;
-      if(Math.abs(vy) < 0.00001) vy = 0;
+      vx *= DRAG; vy *= DRAG;
+      if(Math.abs(vx)<0.00001)vx=0;
+      if(Math.abs(vy)<0.00001)vy=0;
     }
-
-    // limit x rotation so the group doesn't flip over
-    group.rotation.x = THREE.MathUtils.clamp(group.rotation.x, -Math.PI * 0.45, Math.PI * 0.45);
-
     renderer.render(scene, camera);
   }
 
