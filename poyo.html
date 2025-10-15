@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>ぽよぽよアクション - 完全版</title>
+<style>
+:root{
+  --bg:#7ec0ff;
+  --ground:#6b3;
+  --ui-bg: rgba(0,0,0,0.22);
+  --btn-bg: rgba(255,255,255,0.12);
+  --accent:#ffdd55;
+  font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN","メイリオ","Noto Sans JP",sans-serif;
+}
+html,body{height:100%;margin:0;background:var(--bg);-webkit-user-select:none;user-select:none;touch-action:none;}
+#gameWrap{position:relative;height:100vh;display:flex;flex-direction:column;align-items:stretch;overflow:hidden;}
+canvas{display:block;flex:1;width:100%;height:100%;background:var(--bg);}
+.ui{position:absolute;left:0;right:0;bottom:10px;pointer-events:none;display:flex;justify-content:space-between;padding:0 6vw;align-items:flex-end;}
+.leftPad, .rightPad{width:40%;height:36vh;pointer-events:auto;}
+.joyBase{position:relative;width:46vw;height:46vw;max-width:220px;max-height:220px;border-radius:50%;background:var(--ui-bg);display:flex;align-items:center;justify-content:center;margin-left:4vw;margin-bottom:2vh;box-shadow:0 6px 18px rgba(0,0,0,0.18);}
+.stick{width:36%;height:36%;border-radius:50%;background:var(--btn-bg);transform:translate(0,0);transition:transform 0s;box-shadow:0 3px 8px rgba(0,0,0,0.2) inset;}
+.buttons{display:flex;flex-direction:column;gap:12px;align-items:center;margin-right:4vw;margin-bottom:2vh;pointer-events:auto;}
+.btn{width:64px;height:64px;border-radius:14px;background:var(--ui-bg);display:flex;align-items:center;justify-content:center;font-weight:800;color:white;font-size:20px;backdrop-filter: blur(3px);-webkit-tap-highlight-color:transparent;box-shadow:0 6px 18px rgba(0,0,0,0.18);user-select:none;touch-action:none;}
+.btn.small{width:56px;height:56px;border-radius:12px;font-size:18px;}
+.hud{position:absolute;left:12px;top:12px;padding:8px 12px;background:rgba(0,0,0,0.25);color:white;border-radius:10px;font-weight:700;display:flex;gap:10px;align-items:center;}
+.title{position:absolute;left:50%;transform:translateX(-50%);top:8px;color:white;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,0.3);}
+.controlTop{position:absolute;right:12px;top:12px;display:flex;gap:8px;}
+.controlTop .tiny{width:40px;height:36px;border-radius:8px;background:rgba(0,0,0,0.25);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;pointer-events:auto;}
+.abilityIcon{width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-weight:800;color:white;}
+.stageName{font-weight:800;padding:6px 10px;border-radius:8px;background:rgba(0,0,0,0.2);color:white}
+.touchHint{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);font-size:13px;color:white;background:rgba(0,0,0,0.18);padding:6px 8px;border-radius:8px;}
+@media(min-width:900px){ .leftPad{height:40vh} .rightPad{height:40vh} }
+</style>
+</head>
+<body>
+<div id="gameWrap">
+  <canvas id="game"></canvas>
+
+  <div class="title">ぽよぽよアクション — 完全版</div>
+
+  <div class="hud" id="hud">
+    <div>Score: <span id="score">0</span></div>
+    <div>Lives: <span id="lives">3</span></div>
+    <div class="stageName" id="stageName">草原</div>
+    <div style="margin-left:8px" id="abilityDisplay"><div class="abilityIcon" id="abilityIcon">—</div></div>
+  </div>
+
+  <div class="controlTop">
+    <div class="tiny" id="btn-mute" title="音切替">♪</div>
+    <div class="tiny" id="btn-restart" title="リスタート">⟳</div>
+  </div>
+
+  <div class="ui">
+    <div class="leftPad" id="leftPad" aria-hidden="true">
+      <div class="joyBase" id="joyBase">
+        <div class="stick" id="stick"></div>
+      </div>
+    </div>
+
+    <div class="rightPad" id="rightPad" aria-hidden="true" style="display:flex;justify-content:flex-end;">
+      <div class="buttons">
+        <div class="btn" id="btn-jump">↑</div>
+        <div class="btn" id="btn-suck">🌀</div>
+        <div class="btn" id="btn-attack">⚔️</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="touchHint" id="touchHint">マルチタッチ対応 — 移動＋ジャンプ＋攻撃を同時に</div>
+</div>
+
+<script>
+/*
+  ぽよぽよアクション — 完全版 (single-file)
+  Features:
+   - 4-stage loop (Grass, Night, Clouds, Cave)
+   - 4 enemy types -> give abilities on suck
+   - JumpPower higher, air control improved
+   - 3 right buttons: Jump / Suck / Attack
+   - Multitouch-safe input handling
+   - Simple WebAudio BGM + SFX
+   - All drawing done on canvas (no external images)
+*/
+
+/* ========== CONFIG ========== */
+const CONFIG = {
+  gravity: 0.9,
+  friction: 0.90,
+  playerSpeed: 2.8,
+  jumpPower: 18, // increased
+  maxSpeedX: 7,
+  suckRange: 82,
+  spitSpeed: 10,
+  enemyCountBase: 5,
+  coinCountBase: 8,
+  stageWidth: 2200, // per stage
+  tileSize: 48,
+  musicOn: true
+};
+/* stages */
+const STAGES = [
+  { id:0, name:'草原', theme:'grass' },
+  { id:1, name:'夜空', theme:'night' },
+  { id:2, name:'雲の上', theme:'cloud' },
+  { id:3, name:'洞窟', theme:'cave' }
+];
+/* abilities */
+const ABILITIES = {
+  none: { id:'none', label:'—' },
+  fire: { id:'fire', label:'🔥' },
+  wind: { id:'wind', label:'💨' },
+  spark: { id:'spark', label:'⚡' },
+  normal: { id:'normal', label:'💫' }
+};
+
+/* ========== CANVAS SETUP ========== */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha: false });
+const DPR = devicePixelRatio || 1;
+let W = canvas.width = innerWidth * DPR;
+let H = canvas.height = innerHeight * DPR;
+canvas.style.width = innerWidth + 'px';
+canvas.style.height = innerHeight + 'px';
+window.addEventListener('resize', ()=>{
+  W = canvas.width = innerWidth * DPR;
+  H = canvas.height = innerHeight * DPR;
+  canvas.style.width = innerWidth + 'px';
+  canvas.style.height = innerHeight + 'px';
+  world.groundY = H / DPR - CONFIG.tileSize * 1.5;
+});
+
+/* ========== DOM refs ========== */
+const scoreEl = document.getElementById('score');
+const livesEl = document.getElementById('lives');
+const stageNameEl = document.getElementById('stageName');
+const abilityIcon = document.getElementById('abilityIcon');
+const btnMute = document.getElementById('btn-mute');
+const btnRestart = document.getElementById('btn-restart');
+
+/* ========== AUDIO (WebAudio simple) ========== */
+let audioCtx = null;
+let musicEnabled = CONFIG.musicOn;
+function initAudio(){ if(audioCtx) return; audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+function playTone(freq, duration=0.12, type='sine', vol=0.08){
+  if(!musicEnabled) return;
+  if(!audioCtx) initAudio();
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.value = vol;
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start();
+  g.gain.setValueAtTime(vol, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+  o.stop(audioCtx.currentTime + duration + 0.02);
+}
+function playSFX(name){
+  if(!musicEnabled) return;
+  if(!audioCtx) initAudio();
+  // simple SFX palette
+  if(name==='jump') playTone(880,0.09,'triangle',0.08);
+  if(name==='suck') playTone(220,0.08,'sawtooth',0.06);
+  if(name==='spit') playTone(660,0.06,'square',0.08);
+  if(name==='coin') playTone(1200,0.06,'sine',0.12);
+  if(name==='hurt') playTone(150,0.18,'sine',0.14);
+  if(name==='fire') { playTone(520,0.06,'sawtooth',0.08); playTone(840,0.04,'square',0.05); }
+  if(name==='wind') playTone(420,0.14,'triangle',0.06);
+  if(name==='spark') playTone(980,0.08,'square',0.09);
+}
+let musicInterval = null;
+function startMusic(){
+  if(!musicEnabled) return;
+  if(!audioCtx) initAudio();
+  if(musicInterval) clearInterval(musicInterval);
+  let step=0;
+  musicInterval = setInterval(()=>{
+    const baseMelody = [440,0,523,0,659,0,880,0];
+    const f = baseMelody[step % baseMelody.length];
+    if(f) playTone(f,0.18,'sine',0.03);
+    step++;
+  },320);
+}
+function stopMusic(){ if(musicInterval){ clearInterval(musicInterval); musicInterval=null; } }
+btnMute.addEventListener('click', ()=>{
+  musicEnabled = !musicEnabled;
+  btnMute.textContent = musicEnabled ? '♪' : '×';
+  if(musicEnabled) startMusic(); else stopMusic();
+});
+btnRestart.addEventListener('click', ()=>{ initGame(); });
+
+/* start audio after first gesture for mobile autoplay rules */
+function enableAudioOnFirstGesture(){ function once(){ initAudio(); if(musicEnabled) startMusic(); window.removeEventListener('touchstart', once); window.removeEventListener('mousedown', once); } window.addEventListener('touchstart', once, {passive:true}); window.addEventListener('mousedown', once); }
+enableAudioOnFirstGesture();
+
+/* ========== WORLD & PLAYER ========== */
+const world = {
+  width: CONFIG.stageWidth * STAGES.length,
+  groundY: H / DPR - CONFIG.tileSize * 1.5,
+  scrollX: 0,
+  stageIndex: 0
+};
+
+const player = {
+  x: 120, y: world.groundY - 44, vx:0, vy:0, w:48, h:48,
+  onGround:true, facing:1, isSucking:false, sucked:null, ability:'none', lives:3, score:0
+};
+
+/* entities */
+let enemies = [];
+let coins = [];
+let projectiles = [];
+
+/* spawn initial entities per stage */
+function spawnStageContents(){
+  enemies = []; coins = []; projectiles = [];
+  // spawn coins/enemies across whole world (per-stage flavor)
+  for(let si=0; si<STAGES.length; si++){
+    const baseX = si * CONFIG.stageWidth;
+    // coins
+    for(let i=0;i<CONFIG.coinCountBase;i++){
+      const x = baseX + 150 + i * 200 + Math.random()*140;
+      const y = world.groundY - 80 - Math.random()*180;
+      coins.push({ x, y, r:10, collected:false, stage:si });
+    }
+    // enemies: pick types depending on stage for variety
+    const enemyTypes = ['normal','fire','wind','spark'];
+    for(let i=0;i<CONFIG.enemyCountBase;i++){
+      const type = enemyTypes[ (i + si) % enemyTypes.length ];
+      const x = baseX + 300 + i * 220 + Math.random()*200;
+      const y = (type==='wind') ? world.groundY - 160 - Math.random()*120 : world.groundY - 36;
+      enemies.push({
+        x,y,w:36,h:36,
+        vx: (Math.random()>0.5?1:-1)*(0.6 + Math.random()*1.2),
+        alive:true, type, stage:si, behaviorTimer: Math.random()*120
+      });
+    }
+  }
+}
+spawnStageContents();
+
+/* ========== UI INPUT (multitouch safe) ========== */
+/* joystick handling (touch & mouse) */
+const joyBase = document.getElementById('joyBase');
+const stick = document.getElementById('stick');
+let joyState = { activated:false, id:null, cx:0, cy:0, dx:0, dy:0, normX:0, normY:0 };
+function resetStick(){ stick.style.transform = 'translate(0px,0px)'; joyState.dx=joyState.dy=joyState.normX=joyState.normY=0; }
+function joyStart(touch){
+  const rect = joyBase.getBoundingClientRect();
+  joyState.activated = true;
+  joyState.cx = rect.left + rect.width/2;
+  joyState.cy = rect.top + rect.height/2;
+  joyState.id = touch.identifier !== undefined ? touch.identifier : 'mouse';
+  processJoyMove(touch);
+}
+function processJoyMove(pt){
+  if(!joyState.activated) return;
+  const maxR = Math.min(joyBase.clientWidth, joyBase.clientHeight) * 0.42;
+  const dx = (pt.clientX - joyState.cx);
+  const dy = (pt.clientY - joyState.cy);
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const r = Math.min(dist, maxR);
+  const ang = Math.atan2(dy, dx);
+  joyState.dx = Math.cos(ang) * r;
+  joyState.dy = Math.sin(ang) * r;
+  joyState.normX = joyState.dx / maxR;
+  joyState.normY = joyState.dy / maxR;
+  stick.style.transform = `translate(${joyState.dx}px, ${joyState.dy}px)`;
+}
+function joyEnd(){
+  joyState.activated = false; joyState.id=null; resetStick();
+}
+joyBase.addEventListener('touchstart', (e)=>{ e.preventDefault(); const t=e.changedTouches[0]; joyStart(t); }, {passive:false});
+joyBase.addEventListener('touchmove', (e)=>{ for(const t of e.changedTouches){ if(joyState.id===t.identifier) processJoyMove(t); } }, {passive:false});
+joyBase.addEventListener('touchend', (e)=>{ for(const t of e.changedTouches){ if(joyState.id===t.identifier) joyEnd(); } }, {passive:false});
+joyBase.addEventListener('mousedown', (e)=>{ e.preventDefault(); joyStart(e); window.addEventListener('mousemove', processJoyMoveMouse); });
+function processJoyMoveMouse(e){ processJoyMove(e); }
+window.addEventListener('mouseup', (e)=>{ joyEnd(); window.removeEventListener('mousemove', processJoyMoveMouse); });
+
+/* Buttons: handle multitouch by tracking pointers per button */
+const btnJump = document.getElementById('btn-jump');
+const btnSuck = document.getElementById('btn-suck');
+const btnAttack = document.getElementById('btn-attack');
+
+let pointers = {}; // map pointerId -> action
+let jumpPressed=false, suckPressed=false, attackPressed=false;
+
+function handlePointerDown(e, action){
+  e.preventDefault();
+  const id = e.pointerId !== undefined ? e.pointerId : (e.changedTouches ? e.changedTouches[0].identifier : 'mouse'+Math.random());
+  pointers[id] = action;
+  updateActionState();
+  // visually active
+  const el = (action==='jump'?btnJump: action==='suck'?btnSuck: btnAttack);
+  el.classList.add('active');
+}
+function handlePointerUp(e){
+  e.preventDefault();
+  const id = e.pointerId !== undefined ? e.pointerId : (e.changedTouches ? e.changedTouches[0].identifier : null);
+  if(id && pointers[id]) delete pointers[id];
+  updateActionState();
+  // clear active classes (simple)
+  btnJump.classList.remove('active'); btnSuck.classList.remove('active'); btnAttack.classList.remove('active');
+}
+function updateActionState(){
+  jumpPressed = Object.values(pointers).includes('jump');
+  suckPressed = Object.values(pointers).includes('suck');
+  attackPressed = Object.values(pointers).includes('attack');
+}
+
+/* Use pointer events where supported */
+[btnJump, btnSuck, btnAttack].forEach((el)=>{
+  el.style.touchAction = 'none';
+  el.addEventListener('pointerdown', (e)=>{ handlePointerDown(e, el===btnJump?'jump':el===btnSuck?'suck':'attack'); });
+  el.addEventListener('pointerup', handlePointerUp);
+  el.addEventListener('pointercancel', handlePointerUp);
+  el.addEventListener('pointerout', handlePointerUp);
+  el.addEventListener('pointerleave', handlePointerUp);
+  // fallback for touchstart/touchend for older mobile
+  el.addEventListener('touchstart', (ev)=>{ ev.preventDefault(); for(const t of ev.changedTouches) handlePointerDown(t, el===btnJump?'jump':el===btnSuck?'suck':'attack'); }, {passive:false});
+  el.addEventListener('touchend', (ev)=>{ ev.preventDefault(); for(const t of ev.changedTouches) handlePointerUp(t); }, {passive:false});
+});
+
+/* Desktop keyboard for testing */
+window.addEventListener('keydown', (e)=>{
+  if(e.key==='ArrowLeft') joyState.normX = -0.9;
+  if(e.key==='ArrowRight') joyState.normX = 0.9;
+  if(e.key===' ') { pointers['kb-jump']='jump'; updateActionState(); }
+  if(e.key==='x') { pointers['kb-suck']='suck'; updateActionState(); }
+  if(e.key==='z') { pointers['kb-attack']='attack'; updateActionState(); }
+});
+window.addEventListener('keyup', (e)=>{
+  if(e.key==='ArrowLeft' || e.key==='ArrowRight') joyState.normX = 0;
+  if(e.key===' ') { delete pointers['kb-jump']; updateActionState(); }
+  if(e.key==='x') { delete pointers['kb-suck']; updateActionState(); }
+  if(e.key==='z') { delete pointers['kb-attack']; updateActionState(); }
+});
+
+/* ========== GAME LOGIC ========== */
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function aabb(ax,ay,aw,ah,bx,by,bw,bh){ return !(ax+aw < bx || bx+bw < ax || ay+ah < by || by+bh < ay); }
+
+function initGame(){
+  world.width = CONFIG.stageWidth * STAGES.length;
+  world.scrollX = 0;
+  world.stageIndex = 0;
+  player.x = 120; player.y = world.groundY - player.h; player.vx=0; player.vy=0; player.onGround=true;
+  player.isSucking=false; player.sucked=null; player.ability='none'; player.lives=3; player.score=0;
+  spawnStageContents();
+  updateHUD();
+  if(musicEnabled) startMusic();
+}
+initGame();
+
+function updateHUD(){ scoreEl.textContent = player.score; livesEl.textContent = player.lives; stageNameEl.textContent = STAGES[world.stageIndex].name; abilityIcon.textContent = ABILITIES[player.ability].label; }
+
+/* hurt */
+let hurtCooldown=0;
+function hurtPlayer(){
+  if(hurtCooldown>0) return;
+  player.lives -=1;
+  player.vx = -3; player.vy = -8;
+  playSFX('hurt');
+  hurtCooldown = 90;
+  setTimeout(()=>{ hurtCooldown=0; },900);
+  if(player.lives<=0){
+    setTimeout(()=>{ initGame(); }, 700);
+  }
+}
+
+/* update loop */
+function update(dt){
+  // input movement
+  const moveX = joyState.normX || 0;
+  player.vx += moveX * CONFIG.playerSpeed * 0.8; // responsive
+  player.vx = clamp(player.vx, -CONFIG.maxSpeedX, CONFIG.maxSpeedX);
+  // air control: even when midair, allow smaller influence
+  if(!player.onGround){
+    player.vx += (moveX * 0.5) * 0.25;
+  }
+  if(Math.abs(moveX) < 0.12) player.vx *= CONFIG.friction;
+
+  // facing
+  if(Math.abs(player.vx) > 0.5) player.facing = player.vx > 0 ? 1 : -1;
+
+  // jump
+  if(jumpPressed && player.onGround){
+    player.vy = -CONFIG.jumpPower;
+    player.onGround = false;
+    playSFX('jump');
+  }
+  // small jump hold (longer jump when hold) - allow holding jump to slightly reduce gravity
+  if(!jumpPressed && player.vy < -2){
+    player.vy += 0.9; // cut upward momentum if jump released early
+  }
+
+  // gravity
+  player.vy += CONFIG.gravity;
+  player.x += player.vx;
+  player.y += player.vy;
+
+  // ground collision
+  if(player.y + player.h > world.groundY){
+    player.y = world.groundY - player.h;
+    player.vy = 0;
+    player.onGround = true;
+  } else player.onGround = false;
+
+  // bounds
+  player.x = clamp(player.x, 0, world.width - player.w);
+
+  // camera / scroll
+  const screenCenter = (innerWidth / DPR) * 0.36;
+  world.scrollX = clamp(player.x - screenCenter, 0, world.width - (innerWidth / DPR));
+
+  // stage index based on player.x
+  const newStageIndex = Math.floor(player.x / CONFIG.stageWidth) % STAGES.length;
+  if(newStageIndex !== world.stageIndex){
+    world.stageIndex = newStageIndex;
+    // fade or music change could be done here
+    updateHUD();
+  }
+
+  // ENEMIES: simple AI per type
+  for(const e of enemies){
+    if(!e.alive) continue;
+    e.behaviorTimer = (e.behaviorTimer || 0) + 1;
+    if(e.type === 'normal'){
+      // patrol
+      e.x += e.vx;
+      if(Math.random() < 0.002) e.vx *= -1;
+    } else if(e.type === 'fire'){
+      // slow patrol, occasionally "spit" small flame
+      e.x += e.vx * 0.6;
+      if(Math.random() < 0.004){
+        // flame projectile
+        projectiles.push({ x:e.x + (e.vx>0?e.w: -8), y:e.y+12, vx: (e.vx>0?2:-2), vy:-1, r:6, life:90, tag:'enemy-fire' });
+      }
+    } else if(e.type === 'wind'){
+      // floaty hover
+      e.x += Math.sin(e.behaviorTimer*0.02) * 0.6;
+      e.y += Math.cos(e.behaviorTimer*0.025) * 0.4;
+    } else if(e.type === 'spark'){
+      // jumpy
+      if(e.grounded){
+        if(Math.random() < 0.02){ e.vy = -6 - Math.random()*6; e.grounded = false; }
+      }
+      e.y += e.vy || 0;
+      e.vy = (e.vy || 0) + 0.35;
+      if(e.y >= world.groundY - e.h){ e.y = world.groundY - e.h; e.vy = 0; e.grounded = true; }
+    }
+    // collision with player
+    if(aabb(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)){
+      // stomp check
+      if(player.vy > 2 && (player.y + player.h - e.y) < 20){
+        e.alive = false; player.score += 60; player.vy = -8; playSFX('coin');
+      } else {
+        // if sucking and in range: capture
+        const dist = Math.hypot((player.x + player.w/2) - (e.x + e.w/2), (player.y + player.h/2) - (e.y + e.h/2));
+        if(suckPressed && dist < CONFIG.suckRange && !player.sucked){
+          player.sucked = e;
+          playSFX('suck');
+        } else {
+          hurtPlayer();
+        }
+      }
+    }
+  }
+
+  // SUCK mechanics
+  if(suckPressed){
+    player.isSucking = true;
+    if(player.sucked && player.sucked.alive){
+      const t = player.sucked;
+      const mouthX = player.x + (player.facing===1 ? player.w + 8 : -8);
+      const mouthY = player.y + player.h * 0.45;
+      t.x += (mouthX - t.x) * 0.28;
+      t.y += (mouthY - t.y) * 0.2;
+    } else {
+      // attract enemies and coins
+      for(const e of enemies){
+        if(!e.alive) continue;
+        const dist = Math.hypot((player.x + player.w/2) - (e.x + e.w/2), (player.y + player.h/2) - (e.y + e.h/2));
+        if(dist < CONFIG.suckRange && !player.sucked){
+          player.sucked = e;
+          playSFX('suck');
+          break;
+        }
+      }
+      for(const c of coins){
+        if(c.collected) continue;
+        const dist = Math.hypot((player.x + player.w/2) - c.x, (player.y + player.h/2) - c.y);
+        if(dist < CONFIG.suckRange){
+          c.collected = true; player.score += 20; playSFX('coin');
+        }
+      }
+    }
+  } else {
+    // release / spit
+    if(player.sucked){
+      const t = player.sucked;
+      // convert sucked enemy into projectile or ability
+      // if we captured and release immediately -> set ability based on type
+      // Implementation: long-press to "swallow" (attach longer than threshold) to gain ability.
+      if(!t._swallowed){
+        // initial release: spit as projectile
+        t.alive = false;
+        projectiles.push({ x: player.x + (player.facing===1?player.w+6:-12), y: player.y + player.h*0.45, vx: CONFIG.spitSpeed * player.facing, vy:-2, r:8, life:120, tag:'spit' });
+        playSFX('spit');
+      } else {
+        // if swallowed, give ability
+        const mapping = { fire:'fire', wind:'wind', spark:'spark', normal:'normal' };
+        player.ability = mapping[t.type] || 'normal';
+        playSFX(t.type==='fire'?'fire':t.type==='wind'?'wind':t.type==='spark'?'spark':'coin');
+      }
+      player.sucked = null;
+    }
+    player.isSucking = false;
+  }
+
+  // detect "swallow" (hold suck for a time while target near mouth)
+  if(player.sucked && !player.sucked._swallowed){
+    // approximate time held
+    player.sucked._hold = (player.sucked._hold || 0) + (suckPressed ? 1 : 0);
+    if(player.sucked._hold > 40){
+      player.sucked._swallowed = true;
+      // attach to player (it will be consumed on release)
+    }
+  }
+
+  // attack handling
+  if(attackPressed){
+    // create attack effect based on ability
+    performAttack();
+    // simple cooldown so it doesn't spam every frame
+    attackPressed = false;
+    // also clear pointer flags referencing attack so we don't repeatedly fire if pointer still held
+    for(const k of Object.keys(pointers)){ if(pointers[k]==='attack') delete pointers[k]; }
+    updateActionState();
+  }
+
+  // update projectiles
+  for(const p of projectiles){
+    p.x += p.vx; p.y += p.vy; p.vy += 0.18; p.life--;
+    // collide with enemies (friendly projectiles)
+    if(p.tag==='spit' || p.tag==='attack'){
+      for(const e of enemies){
+        if(!e.alive) continue;
+        if(aabb(p.x-p.r, p.y-p.r, p.r*2, p.r*2, e.x, e.y, e.w, e.h)){
+          e.alive = false;
+          p.life = 0;
+          player.score += 80;
+          playSFX('coin');
+        }
+      }
+    }
+    // enemy projectiles hurt player
+    if(p.tag==='enemy-fire'){
+      if(aabb(p.x-p.r, p.y-p.r, p.r*2, p.r*2, player.x, player.y, player.w, player.h)){
+        p.life = 0; hurtPlayer();
+      }
+    }
+  }
+  projectiles = projectiles.filter(p=>p.life>0 && p.x > -200 && p.x < world.width + 200);
+
+  // coins collection
+  for(const c of coins){
+    if(c.collected) continue;
+    if(aabb(player.x, player.y, player.w, player.h, c.x - c.r, c.y - c.r, c.r*2, c.r*2)){
+      c.collected = true; player.score += 20; playSFX('coin');
+    }
+  }
+
+  // world loop extension: when player reaches right end, extend world by looping back (we simply let player x wrap to start)
+  if(player.x > world.width - 80){
+    // teleport back to start of world to simulate loop, maintain progress mild
+    player.x = 60;
+    // respawn contents for variety
+    spawnStageContents();
+  }
+
+  updateHUD();
+}
+
+/* Attack function: spawns projectiles & plays sfx based on ability */
+let attackCooldown = 0;
+function performAttack(){
+  if(attackCooldown > 0) return;
+  attackCooldown = 18;
+  const px = player.x + (player.facing===1 ? player.w + 6 : -14);
+  const py = player.y + player.h*0.5;
+  if(player.ability === 'fire'){
+    // short cone: spawn several short-range fire particles
+    for(let i=0;i<4;i++){
+      projectiles.push({ x: px, y: py + (i-2)*6, vx: (4 + Math.random()*2) * player.facing, vy: (Math.random()-0.5)*1.2, r:6, life:40, tag:'attack' });
+    }
+    playSFX('fire');
+  } else if(player.ability === 'wind'){
+    // wind projectile: faster, slight upward
+    projectiles.push({ x: px, y: py, vx: 8 * player.facing, vy: -1, r:8, life:80, tag:'attack' });
+    playSFX('wind');
+  } else if(player.ability === 'spark'){
+    // area spark: small radial projectiles
+    for(let a=0;a<6;a++){
+      const ang = Math.PI*2*(a/6);
+      projectiles.push({ x: px, y: py, vx: Math.cos(ang)*4, vy: Math.sin(ang)*4, r:6, life:60, tag:'attack' });
+    }
+    playSFX('spark');
+  } else {
+    // normal: spit single projectile
+    projectiles.push({ x: px, y: py, vx: CONFIG.spitSpeed * player.facing, vy: -2, r:8, life:120, tag:'spit' });
+    playSFX('spit');
+  }
+  // minor recoil to player
+  player.vx += -player.facing * 0.6;
+}
+setInterval(()=>{ if(attackCooldown>0) attackCooldown--; }, 16);
+
+/* ========== RENDER ========== */
+function drawRoundedRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function render(){
+  // clear
+  ctx.fillStyle = '#7ec0ff';
+  ctx.fillRect(0,0,W,H);
+
+  // stage-based background parallax
+  const sx = world.scrollX;
+  const stage = STAGES[world.stageIndex];
+  // draw multi-layer backgrounds depending on stage.theme
+  if(stage.theme === 'grass'){
+    // distant hills
+    ctx.fillStyle = '#9fe07a';
+    for(let i=-2;i<6;i++){
+      const hx = i * 560 - ((sx*0.2) % 560);
+      ctx.beginPath();
+      ctx.ellipse(hx * DPR + 100, (H - 220*DPR), 420*DPR, 220*DPR, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+    // clouds
+    ctx.globalAlpha = 0.9;
+    for(let i=0;i<4;i++){
+      const cx = (i*360 + (sx*0.12)%600) * DPR;
+      ctx.beginPath();
+      ctx.ellipse(cx, 80*DPR + (i%2)*20, 86*DPR, 36*DPR, 0, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  } else if(stage.theme === 'night'){
+    // starry sky
+    ctx.fillStyle = '#031028';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#fff';
+    for(let i=0;i<120;i++){
+      const rx = (i*73 + (sx*0.08 * (i%7))) % (innerWidth) * DPR;
+      const ry = (Math.sin(i)*200 + 60) * DPR;
+      ctx.fillRect(rx, ry, 1.5*DPR, 1.5*DPR);
+    }
+    // faint moon
+    ctx.beginPath();
+    ctx.arc((innerWidth*0.75 - (sx*0.03)) * DPR, 80*DPR, 48*DPR, 0, Math.PI*2);
+    ctx.fillStyle = '#f2f7ff';
+    ctx.fill();
+  } else if(stage.theme === 'cloud'){
+    // bright sky with many clouds and platforms
+    ctx.fillStyle = '#cfefff';
+    ctx.fillRect(0,0,W,H);
+    for(let i=0;i<8;i++){
+      const cx = ((i*270) - (sx*0.2 % 270)) * DPR;
+      ctx.beginPath();
+      ctx.ellipse(cx, 120*DPR + (i%3)*20, 120*DPR, 48*DPR, 0, 0, Math.PI*2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+    }
+  } else if(stage.theme === 'cave'){
+    // dark cave with stalactites
+    ctx.fillStyle = '#0b1822';
+    ctx.fillRect(0,0,W,H);
+    for(let i=0;i<8;i++){
+      const cx = (i*260 + (sx*0.1)%260) * DPR;
+      ctx.beginPath();
+      ctx.moveTo(cx - 40*DPR, 0);
+      ctx.lineTo(cx + 40*DPR, 0);
+      ctx.lineTo(cx, 140*DPR);
+      ctx.closePath();
+      ctx.fillStyle = '#12222a';
+      ctx.fill();
+    }
+  }
+
+  // ground
+  const groundYpx = world.groundY * DPR;
+  ctx.fillStyle = (stage.theme==='cave')? '#3b3b3b' : '#6b9b2a';
+  ctx.fillRect(0, groundYpx, W, H - groundYpx);
+
+  // tiles
+  ctx.fillStyle = (stage.theme==='cave')? '#2f2f2f' : '#5e8622';
+  for(let x=-1;x< (W/DPR)/CONFIG.tileSize + 6; x++){
+    const sxT = (x*CONFIG.tileSize - (world.scrollX%CONFIG.tileSize)) * DPR;
+    ctx.fillRect(sxT, groundYpx, CONFIG.tileSize * DPR * 0.95, CONFIG.tileSize*DPR*0.38);
+  }
+
+  // draw coins
+  for(const c of coins){
+    if(c.collected) continue;
+    const cx = (c.x - world.scrollX) * DPR;
+    const cy = c.y * DPR;
+    ctx.beginPath();
+    ctx.fillStyle = '#FFD54A';
+    ctx.ellipse(cx, cy, c.r*DPR, c.r*DPR, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.lineWidth = 1.2*DPR;
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.stroke();
+  }
+
+  // draw enemies
+  for(const e of enemies){
+    if(!e.alive) continue;
+    const ex = (e.x - world.scrollX) * DPR;
+    const ey = e.y * DPR;
+    ctx.save();
+    ctx.translate(ex, ey);
+    // body by type
+    if(e.type === 'fire'){
+      // red round
+      ctx.fillStyle = '#e85c4d';
+      drawRoundedRect(-0.5*DPR, 0, e.w*DPR+1, e.h*DPR, 8*DPR);
+      // flame tip
+      ctx.fillStyle = '#ffb86b';
+      ctx.beginPath(); ctx.ellipse(e.w*DPR*0.5, -8*DPR, 12*DPR, 8*DPR, 0, 0, Math.PI*2); ctx.fill();
+    } else if(e.type === 'wind'){
+      ctx.fillStyle = '#8fd7f1';
+      drawRoundedRect(-0.5*DPR, 0, e.w*DPR+1, e.h*DPR, 8*DPR);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(8*DPR, 10*DPR, 6*DPR, 6*DPR);
+    } else if(e.type === 'spark'){
+      ctx.fillStyle = '#ffd25a';
+      drawRoundedRect(-0.5*DPR, 0, e.w*DPR+1, e.h*DPR, 8*DPR);
+      ctx.fillStyle = '#fff'; ctx.fillRect(10*DPR, 10*DPR, 6*DPR, 6*DPR);
+    } else {
+      ctx.fillStyle = '#bdbdbd';
+      drawRoundedRect(-0.5*DPR, 0, e.w*DPR+1, e.h*DPR, 8*DPR);
+      ctx.fillStyle = '#fff'; ctx.fillRect(10*DPR, 10*DPR, 6*DPR, 6*DPR);
+    }
+    ctx.restore();
+  }
+
+  // draw projectiles
+  for(const p of projectiles){
+    const px = (p.x - world.scrollX) * DPR;
+    const py = p.y * DPR;
+    ctx.beginPath();
+    if(p.tag==='enemy-fire'){ ctx.fillStyle = '#ff6b3a'; ctx.ellipse(px, py, p.r*DPR, p.r*DPR, 0, 0, Math.PI*2); ctx.fill(); }
+    else if(p.tag==='attack'){ ctx.fillStyle = '#fff'; ctx.ellipse(px, py, p.r*DPR, p.r*DPR, 0, 0, Math.PI*2); ctx.fill(); }
+    else { ctx.fillStyle = '#444'; ctx.ellipse(px, py, p.r*DPR, p.r*DPR, 0, 0, Math.PI*2); ctx.fill(); }
+  }
+
+  // draw player
+  const px = (player.x - world.scrollX) * DPR;
+  const py = player.y * DPR;
+  ctx.save();
+  ctx.translate(px, py);
+  // shadow
+  ctx.beginPath(); ctx.ellipse(player.w*DPR*0.5, player.h*DPR + 8*DPR, player.w*DPR*0.44, 10*DPR, 0,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.16)'; ctx.fill();
+  // body
+  ctx.fillStyle = '#FF89A8'; ctx.beginPath(); ctx.ellipse(player.w*DPR*0.5, player.h*DPR*0.5, player.w*DPR*0.5, player.h*DPR*0.5, 0, 0, Math.PI*2); ctx.fill();
+  // eye
+  ctx.fillStyle = '#222'; ctx.fillRect(player.w*DPR*0.5 - 6*DPR, player.h*DPR*0.35, 8*DPR, 10*DPR);
+  // cheek
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(player.w*DPR*0.5 + 6*DPR, player.h*DPR*0.45, 8*DPR, 6*DPR, 0, 0, Math.PI*2); ctx.fill();
+  // sucking mouth
+  if(player.isSucking){
+    ctx.fillStyle = '#333'; const mx = player.facing===1 ? player.w*DPR*0.92 : -player.w*DPR*0.08; ctx.beginPath(); ctx.ellipse(mx, player.h*DPR*0.5, 10*DPR, 12*DPR, 0, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+
+  // draw swallowed enemy attached to mouth (if any)
+  if(player.sucked && player.sucked.alive){
+    const t = player.sucked;
+    const tx = (t.x - world.scrollX) * DPR;
+    const ty = t.y * DPR;
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.fillStyle = (t.type==='fire'? '#e85c4d' : t.type==='wind' ? '#8fd7f1' : t.type==='spark' ? '#ffd25a' : '#bdbdbd');
+    drawRoundedRect(0,0,t.w*DPR,t.h*DPR,6*DPR);
+    ctx.restore();
+  }
+
+  // small HUD overlay not in DOM (optional)
+  // debug boxes omitted
+}
+
+/* main loop */
+let lastTime = performance.now();
+function loop(t){
+  const dt = (t - lastTime) / (1000/60); lastTime = t;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ========== UTILITY: Spawn extra when needed ========== */
+function spawnStageContents(){
+  enemies = []; coins = []; projectiles = [];
+  for(let si=0; si<STAGES.length; si++){
+    const baseX = si * CONFIG.stageWidth;
+    for(let i=0;i<CONFIG.coinCountBase;i++){
+      const x = baseX + 150 + i * 200 + Math.random()*140;
+      const y = world.groundY - 80 - Math.random()*180;
+      coins.push({ x, y, r:10, collected:false, stage:si });
+    }
+    const enemyTypes = ['normal','fire','wind','spark'];
+    for(let i=0;i<CONFIG.enemyCountBase;i++){
+      const type = enemyTypes[ (i + si) % enemyTypes.length ];
+      const x = baseX + 300 + i * 220 + Math.random()*200;
+      const y = (type==='wind') ? world.groundY - 160 - Math.random()*120 : world.groundY - 36;
+      enemies.push({
+        x,y,w:36,h:36,
+        vx: (Math.random()>0.5?1:-1)*(0.6 + Math.random()*1.2),
+        alive:true, type, stage:si, behaviorTimer: Math.random()*120, grounded:true
+      });
+    }
+  }
+}
+
+/* ========== Final friendly tips ========== */
+console.log('Controls: Left virtual stick / Up button: Jump / Suck: 吸う / Attack: 能力攻撃');
+console.log('Keyboard (debug): ← → to move, Space jump, X suck, Z attack');
+
+</script>
+</body>
+</html>
