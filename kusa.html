@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0" />
+  <title>3D Grass — ジャイロで揺らすデモ</title>
+  <!-- Three.js (r152 or compatible) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <style>
+    html,body{height:100%;margin:0;background:#071019;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    #ui{position:fixed;left:12px;top:12px;z-index:3}
+    button{padding:8px 12px;border-radius:8px;border:0;background:#1f6feb;color:#fff;font-weight:600}
+    #hint{opacity:.9;margin-top:8px;font-size:13px}
+    canvas{display:block}
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <button id="permissionBtn" style="display:none">センサー許可を要求</button>
+    <div id="hint">スマホを傾けると草が揺れます。端末によっては最初にセンサー許可が必要です。</div>
+  </div>
+
+  <script>
+  // 3D Grass + Gyro demo
+  // 概要:
+  // - Three.jsで大量の草（インスタンス化プレーン）を配置
+  // - 頂点シェーダで草を揺らす（timeと外部のwindUniformで制御）
+  // - DeviceOrientation / DeviceMotion を使って wind の方向・強さを決める
+  // - iOS (Safari) 用に DeviceMotionEvent.requestPermission を試行
+
+  // -- 基本シーン設定 --
+  let scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x071019, 0.0015);
+
+  let camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 4, 12);
+
+  let renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // ライト
+  const hemi = new THREE.HemisphereLight(0xfff7e6, 0x111122, 0.9);
+  scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+  dir.position.set(-5, 10, 5);
+  scene.add(dir);
+
+  // グラウンド
+  const groundGeo = new THREE.PlaneGeometry(200, 200);
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x223322, roughness: 1, metalness: 0 });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI/2;
+  ground.position.y = 0;
+  scene.add(ground);
+
+  // 草のインスタンス設定
+  const NUM = 1400; // 草の枚数。モバイルではこの数を下げると快適になる
+  const bladeWidth = 0.12;
+  const bladeHeight = 1.2;
+
+  // シンプルな草の形: 3頂点でできる薄い三角形を使う（表示は両面）
+  const bladeGeo = new THREE.PlaneGeometry(bladeWidth, bladeHeight, 1, 4);
+
+  // カスタムシェーダーで揺らしを実装
+  const vertexShader = `
+    uniform float time;
+    uniform vec2 wind; // x: dirX, y: strength
+    attribute float offset;
+    varying float vShade;
+
+    void main(){
+      vec3 pos = position;
+
+      // 基本の揺れ: オフセット + 時間でサイン
+      float angle = time * 2.0 + offset * 10.0;
+      float sway = sin(angle) * 0.25; // 基本振幅
+
+      // wind による追従 (風が強いほど幅を増す)
+      float windStrength = length(wind);
+      vec2 windDir = normalize(wind + vec2(0.0001,0.0001));
+      // 局所的に揺らす（y=下、1=上。上ほど揺れやすい）
+      float heightFactor = (position.y + ${bladeHeight.toFixed(1)}) / ${bladeHeight.toFixed(1)}; 
+
+      // X方向(Z方向にも少し)
+      pos.x += (sway * 0.6 + windDir.x * windStrength * 0.5) * heightFactor;
+      pos.z += (sway * 0.2 + windDir.y * windStrength * 0.2) * heightFactor;
+
+      // 小さなランダム回転
+      float r = offset * 6.2831;
+      vec3 rotated = pos;
+
+      // 最後に通常の行列で変換
+      vec4 mvPosition = modelViewMatrix * vec4( rotated, 1.0 );
+      gl_Position = projectionMatrix * mvPosition;
+
+      // 簡易ライティング風の値をvaryingで渡す
+      vShade = 0.4 + 0.6 * heightFactor;
+    }
+  `;
+
+  const fragmentShader = `
+    varying float vShade;
+    void main(){
+      vec3 col = mix(vec3(0.15, 0.35, 0.08), vec3(0.35,0.6,0.15), vShade);
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  const instGeom = bladeGeo;
+
+  // InstancedMesh を使う
+  const material = new THREE.RawShaderMaterial({
+    uniforms: {
+      time: { value: 0 },
+      wind: { value: new THREE.Vector2(0, 0) }
+    },
+    vertexShader,
+    fragmentShader,
+    side: THREE.DoubleSide
+  });
+
+  const inst = new THREE.InstancedMesh(instGeom, material, NUM);
+
+  // インスタンスごとの位置、回転、スケール、そして offset 属性
+  const dummy = new THREE.Object3D();
+  const offsets = new Float32Array(NUM);
+
+  for(let i=0;i<NUM;i++){
+    const x = (Math.random() - 0.5) * 40;
+    const z = (Math.random() - 0.5) * 40;
+    const y = bladeHeight/2; // 草の中心
+
+    dummy.position.set(x, y, z + (Math.random()-0.5)*0.3);
+    dummy.rotation.y = Math.random() * Math.PI * 2;
+    const s = 0.8 + Math.random()*0.8;
+    dummy.scale.set(s, s, s);
+    dummy.updateMatrix();
+    inst.setMatrixAt(i, dummy.matrix);
+    offsets[i] = Math.random();
+  }
+
+  inst.geometry.setAttribute('offset', new THREE.InstancedBufferAttribute(offsets, 1));
+  scene.add(inst);
+
+  // 小さな空気の演出（遠景用）
+  const fogGeo = new THREE.SphereGeometry(1,8,8);
+
+  // リサイズ
+  function onResize(){
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+  window.addEventListener('resize', onResize);
+
+  // DeviceOrientation / DeviceMotion の値を wind に変換
+  let windVec = new THREE.Vector2(0,0);
+  let hasSensor = false;
+
+  function handleOrientationEvent(e){
+    // e.beta (前後傾き), e.gamma (左右傾き)
+    // 一般的に beta: -180..180 (前に倒すと正) gamma: -90..90 (右に倒すと正)
+    const gamma = e.gamma || 0;
+    const beta = e.beta || 0;
+    // マッピング: gamma を X軸、beta を Y軸にしてベクトル化
+    const gx = gamma / 90; // -1..1
+    const gy = beta / 90; // -2..2 maybe
+    // strength を大きく見せすぎない
+    const strength = Math.min(1.6, Math.abs(gx) + Math.abs(gy));
+    windVec.set(gx, gy * 0.6).multiplyScalar(Math.min(1.2, strength));
+    hasSensor = true;
+  }
+
+  // Fallback: マウス / タッチ移動で wind を操作 (開発用・PC互換)
+  function pointerMove(e){
+    let x, y;
+    if(e.touches){ x = e.touches[0].clientX; y = e.touches[0].clientY; }
+    else { x = e.clientX; y = e.clientY; }
+    const nx = (x / window.innerWidth) * 2 - 1; // -1..1
+    const ny = (y / window.innerHeight) * 2 - 1;
+    windVec.set(nx * 0.9, -ny * 0.6);
+  }
+  window.addEventListener('pointermove', pointerMove);
+  window.addEventListener('touchmove', pointerMove, {passive:true});
+
+  // iOS のセンサー権限取得
+  const permissionBtn = document.getElementById('permissionBtn');
+  async function requestSensorPermission(){
+    if(typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+      try{
+        const res = await DeviceMotionEvent.requestPermission();
+        if(res === 'granted'){
+          window.addEventListener('deviceorientation', handleOrientationEvent);
+          permissionBtn.style.display = 'none';
+        } else {
+          alert('センサー許可が拒否されました。');
+        }
+      }catch(err){ console.warn('permission error', err); }
+    } else {
+      // Android/Chrome 等は普通にイベントが来る
+      window.addEventListener('deviceorientation', handleOrientationEvent);
+      permissionBtn.style.display = 'none';
+    }
+  }
+
+  // iOS 13+ ではユーザー操作で requestPermission が必要
+  function checkPermissionRequirement(){
+    if(typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+      permissionBtn.style.display = 'inline-block';
+      permissionBtn.addEventListener('click', requestSensorPermission);
+    } else {
+      // そのままイベント登録
+      window.addEventListener('deviceorientation', handleOrientationEvent);
+    }
+  }
+  checkPermissionRequirement();
+
+  // アニメーションループ
+  let clock = new THREE.Clock();
+  function animate(){
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+    material.uniforms.time.value = t;
+
+    // 低域フィルタをかけて滑らかにする
+    const currentWind = material.uniforms.wind.value;
+    currentWind.x += (windVec.x - currentWind.x) * 0.08;
+    currentWind.y += (windVec.y - currentWind.y) * 0.08;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // ユーザーの視点を少し動かすための傾き補正（オプション）
+  let lastTouch = null;
+  window.addEventListener('touchstart', (e)=>{ lastTouch = e.touches[0]; });
+  window.addEventListener('touchend', ()=>{ lastTouch = null; });
+
+  // README (簡単な利用上の注意)
+  console.log('3D Grass Gyro Demo loaded. If you are on iOS, tap the permission button first.');
+  </script>
+</body>
+</html>
