@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>スマホ向けドットRPG — 48px タイル版</title>
+  <style>
+    html,body{height:100%;margin:0;background:#0c0c0f;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Kaku Gothic ProN',Meiryo,sans-serif}
+    #wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px}
+    canvas{image-rendering:pixelated;border:6px solid #222;background:#5aa;display:block}
+    .controls{position:relative;width:100%;max-width:520px;height:150px}
+    .dpad{position:absolute;left:8px;bottom:6px;width:140px;height:140px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:6px}
+    .dpad button{border-radius:10px;background:#222;border:2px solid #444;color:#fff;font-weight:700;font-size:18px}
+    .center{background:transparent;border:0}
+    .actions{position:absolute;right:8px;bottom:6px;display:flex;flex-direction:column;gap:12px}
+    .btn{width:72px;height:72px;border-radius:14px;background:#c33;border:3px solid #700;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 6px 0 rgba(0,0,0,0.6)}
+    .btn.b{background:#444;border:3px solid #222}
+    #dialog{position:fixed;left:50%;transform:translateX(-50%);bottom:170px;max-width:94%;background:rgba(0,0,0,0.85);color:#fff;border:3px solid #333;padding:10px;border-radius:10px;font-size:16px;display:none}
+    .help{font-size:13px;color:#bfc;text-align:center}
+    @media(min-width:760px){canvas{width:760px;height:auto}}
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <h3>スマホ向けドットRPG（48px タイル・ワンステージ）</h3>
+    <!-- 内部サイズ: 10x8 タイル × 48px = 480x384 -->
+    <canvas id="game" width="480" height="384"></canvas>
+    <div class="help">操作：十字キー（1タップで1マス） / A: 話す / B: キャンセル</div>
+    <div class="controls">
+      <div class="dpad" id="dpad">
+        <button class="corner"></button>
+        <button data-dir="up">▲</button>
+        <button class="corner"></button>
+        <button data-dir="left">◀</button>
+        <button class="center"></button>
+        <button data-dir="right">▶</button>
+        <button class="corner"></button>
+        <button data-dir="down">▼</button>
+        <button class="corner"></button>
+      </div>
+      <div class="actions">
+        <div class="btn a" id="btnA">A</div>
+        <div class="btn b" id="btnB">B</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dialog"><p id="dialog-text"></p></div>
+
+  <script>
+  // === 設定 ===
+  const TILE = 48; // 1マス = 48px
+  const MAP_W = 10, MAP_H = 8; // 10x8 でスマホ画面に収める
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // マップ定義（0: 草, 1: 木(不可), 2: 道, 3: 建物床）
+  // 全体は MAP_H 行 x MAP_W 列
+  const map = [
+    [1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,2,2,2,0,0,0,1],
+    [1,0,0,2,0,2,0,3,3,1],
+    [1,0,0,2,0,2,0,3,3,1],
+    [1,0,0,2,2,2,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1]
+  ];
+
+  // NPC とプレイヤー (1マス = 1 キャラ)
+  const npcs = [
+    {x:8, y:2, dir:'left', text:['こんにちは。森の村へようこそ！','Aで話しかけると会話します。']}
+  ];
+  const player = {x:5, y:4, dir:'down', moving:false, px:5*TILE, py:4*TILE};
+
+  // 入力ロック: 押しっぱなしで連続移動しないようにする
+  const keyLock = {up:false,down:false,left:false,right:false};
+  const input = {a:false,b:false};
+
+  // ダイアログ
+  const dialogEl = document.getElementById('dialog');
+  const dialogText = document.getElementById('dialog-text');
+  let dialogQueue = [];
+  function showDialog(lines){ dialogQueue = lines.slice(); dialogEl.style.display='block'; dialogText.textContent = dialogQueue.shift() || ''; }
+  function nextDialog(){ if(dialogQueue.length>0) dialogText.textContent = dialogQueue.shift(); else { dialogEl.style.display='none'; } }
+
+  // 描画
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // タイル
+    for(let y=0;y<MAP_H;y++){
+      for(let x=0;x<MAP_W;x++){
+        const t = map[y][x];
+        if(t===0) ctx.fillStyle = '#3a8a3a'; // 草
+        else if(t===1) ctx.fillStyle = '#2b4f2b'; // 木の背景
+        else if(t===2) ctx.fillStyle = '#c9a36e'; // 道
+        else if(t===3) ctx.fillStyle = '#7aa8c2'; // 建物床
+        ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
+        // 木の見た目
+        if(t===1){ ctx.fillStyle='#133'; ctx.fillRect(x*TILE+8, y*TILE+6, TILE-16, TILE-12); }
+        // 建物の縁
+        if(t===3){ ctx.strokeStyle='#456'; ctx.strokeRect(x*TILE+4,y*TILE+4,TILE-8,TILE-8); }
+      }
+    }
+    // NPC
+    for(const n of npcs) drawChar(n.x, n.y, n.dir, '#ffdd77');
+    // Player
+    drawChar(player.x, player.y, player.dir, '#66bbff');
+  }
+
+  // キャラクター描画 (キャラはタイルいっぱいに描く)
+  function drawChar(tx, ty, dir, color){
+    const margin = 4; const size = TILE - margin*2;
+    const px = tx * TILE + margin, py = ty * TILE + margin;
+    // 本体
+    ctx.fillStyle = color; ctx.fillRect(px, py, size, size);
+    // 顔向きマーク（黒いピクセル）
+    ctx.fillStyle = '#000';
+    if(dir==='up') ctx.fillRect(px + Math.floor(size/2) - 4, py + 2, 8, 6);
+    if(dir==='down') ctx.fillRect(px + Math.floor(size/2) - 4, py + size - 8, 8, 6);
+    if(dir==='left') ctx.fillRect(px + 2, py + Math.floor(size/2) - 4, 6, 8);
+    if(dir==='right') ctx.fillRect(px + size - 8, py + Math.floor(size/2) - 4, 6, 8);
+  }
+
+  // 通行判定: マップのタイルとNPCの位置を考慮
+  function isWalkable(x,y){
+    if(x<0||y<0||x>=MAP_W||y>=MAP_H) return false;
+    if(map[y][x]===1) return false; // 木は不可
+    // NPCが居るマスは不可
+    if(npcs.some(n=>n.x===x && n.y===y)) return false;
+    return true;
+  }
+
+  // 1マス移動（アニメーション）
+  let moveQueue = [];
+  function attemptMove(dir){
+    if(player.moving || dialogEl.style.display==='block') return;
+    let nx = player.x, ny = player.y;
+    if(dir==='up') { ny--; player.dir='up'; }
+    if(dir==='down'){ ny++; player.dir='down'; }
+    if(dir==='left'){ nx--; player.dir='left'; }
+    if(dir==='right'){ nx++; player.dir='right'; }
+    if(nx===player.x && ny===player.y) return;
+    if(!isWalkable(nx,ny)) return;
+    // アニメ: 160ms でターゲットへ
+    player.moving = true;
+    const startX = player.x * TILE, startY = player.y * TILE;
+    const targetX = nx * TILE, targetY = ny * TILE;
+    const duration = 160; // ms
+    const startTime = performance.now();
+    function step(){
+      const t = (performance.now() - startTime) / duration;
+      if(t >= 1){
+        player.px = targetX; player.py = targetY; player.x = nx; player.y = ny; player.moving = false;
+      } else {
+        player.px = startX + (targetX - startX) * t;
+        player.py = startY + (targetY - startY) * t;
+        requestAnimationFrame(step);
+      }
+    }
+    // px/py を用いて描画するために一時的に上書き
+    player.px = startX; player.py = startY;
+    requestAnimationFrame(step);
+  }
+
+  // Aボタン（会話）
+  function pressA(){
+    if(dialogEl.style.display==='block'){ nextDialog(); return; }
+    let tx = player.x, ty = player.y;
+    if(player.dir==='up') ty--; else if(player.dir==='down') ty++; else if(player.dir==='left') tx--; else if(player.dir==='right') tx++;
+    const npc = npcs.find(n=>n.x===tx && n.y===ty);
+    if(npc){
+      // NPCがプレイヤーを向く
+      if(player.dir==='up') npc.dir='down';
+      if(player.dir==='down') npc.dir='up';
+      if(player.dir==='left') npc.dir='right';
+      if(player.dir==='right') npc.dir='left';
+      showDialog(npc.text);
+    }
+  }
+
+  // Bボタン（キャンセル）
+  function pressB(){ if(dialogEl.style.display==='block'){ dialogEl.style.display='none'; dialogQueue=[]; } }
+
+  // ゲームループ — 描画は px/py を使って滑らかに見せる
+  function renderLoop(){
+    // プレイヤーが移動中は player.px/py を使って描画位置を補間
+    // drawChar uses grid position; to support smooth motion we temporarily translate canvas
+    ctx.save();
+    // draw everything normally, then overlay moving player at player.px/py
+    drawStaticScene();
+    // moving player drawn at px/py
+    if(player.moving){
+      drawMovingPlayer();
+    }
+    ctx.restore();
+    requestAnimationFrame(renderLoop);
+  }
+
+  function drawStaticScene(){
+    // draw tiles and NPCs and stationary player if not moving
+    // (we already draw tiles & chars in draw(), but for clarity we separate)
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for(let y=0;y<MAP_H;y++){
+      for(let x=0;x<MAP_W;x++){
+        const t = map[y][x];
+        if(t===0) ctx.fillStyle = '#3a8a3a'; else if(t===1) ctx.fillStyle = '#2b4f2b'; else if(t===2) ctx.fillStyle = '#c9a36e'; else ctx.fillStyle='#7aa8c2';
+        ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
+        if(t===1){ ctx.fillStyle='#133'; ctx.fillRect(x*TILE+8, y*TILE+6, TILE-16, TILE-12); }
+        if(t===3){ ctx.strokeStyle='#456'; ctx.strokeRect(x*TILE+4,y*TILE+4,TILE-8,TILE-8); }
+      }
+    }
+    for(const n of npcs) drawChar(n.x, n.y, n.dir, '#ffdd77');
+    if(!player.moving) drawChar(player.x, player.y, player.dir, '#66bbff');
+  }
+
+  function drawMovingPlayer(){
+    const margin = 4, size = TILE - margin*2;
+    const px = player.px + margin, py = player.py + margin;
+    ctx.fillStyle = '#66bbff'; ctx.fillRect(px, py, size, size);
+    ctx.fillStyle = '#000';
+    if(player.dir==='up') ctx.fillRect(px + Math.floor(size/2) - 4, py + 2, 8, 6);
+    if(player.dir==='down') ctx.fillRect(px + Math.floor(size/2) - 4, py + size - 8, 8, 6);
+    if(player.dir==='left') ctx.fillRect(px + 2, py + Math.floor(size/2) - 4, 6, 8);
+    if(player.dir==='right') ctx.fillRect(px + size - 8, py + Math.floor(size/2) - 4, 6, 8);
+  }
+
+  // 最初の描画とループ開始
+  drawStaticScene();
+  requestAnimationFrame(renderLoop);
+
+  // キーボード入力 — 押した瞬間だけ1マス移動
+  window.addEventListener('keydown', e=>{
+    if(e.key==='ArrowUp'){ if(!keyLock.up){ keyLock.up=true; attemptMove('up'); } }
+    if(e.key==='ArrowDown'){ if(!keyLock.down){ keyLock.down=true; attemptMove('down'); } }
+    if(e.key==='ArrowLeft'){ if(!keyLock.left){ keyLock.left=true; attemptMove('left'); } }
+    if(e.key==='ArrowRight'){ if(!keyLock.right){ keyLock.right=true; attemptMove('right'); } }
+    if(e.key==='z' || e.key==='Z' || e.key==='Enter'){ pressA(); }
+    if(e.key==='x' || e.key==='X' || e.key==='Escape'){ pressB(); }
+  });
+  window.addEventListener('keyup', e=>{
+    if(e.key==='ArrowUp') keyLock.up=false;
+    if(e.key==='ArrowDown') keyLock.down=false;
+    if(e.key==='ArrowLeft') keyLock.left=false;
+    if(e.key==='ArrowRight') keyLock.right=false;
+  });
+
+  // タッチ / D-PAD
+  function bindButton(el, onDown, onUp){
+    el.addEventListener('touchstart', e=>{ e.preventDefault(); onDown(); });
+    el.addEventListener('mousedown', e=>{ e.preventDefault(); onDown(); });
+    el.addEventListener('touchend', e=>{ e.preventDefault(); onUp(); });
+    el.addEventListener('mouseup', e=>{ e.preventDefault(); onUp(); });
+    el.addEventListener('touchcancel', e=>{ e.preventDefault(); onUp(); });
+  }
+  document.querySelectorAll('#dpad button').forEach(btn=>{
+    const dir = btn.dataset.dir;
+    if(!dir) return;
+    // タップで1回だけ移動するため、touchstartで移動開始
+    btn.addEventListener('touchstart', e=>{ e.preventDefault(); attemptMove(dir); });
+    btn.addEventListener('mousedown', e=>{ e.preventDefault(); attemptMove(dir); });
+  });
+
+  bindButton(document.getElementById('btnA'), ()=>pressA(), ()=>{});
+  bindButton(document.getElementById('btnB'), ()=>pressB(), ()=>{});
+
+  // クリックで向きを変える（デバッグ／利便性）
+  canvas.addEventListener('click', e=>{
+    const rect = canvas.getBoundingClientRect();
+    const cx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const cy = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const dx = cx - (player.x*TILE + TILE/2);
+    const dy = cy - (player.y*TILE + TILE/2);
+    if(Math.abs(dx) > Math.abs(dy)) player.dir = dx>0 ? 'right' : 'left'; else player.dir = dy>0 ? 'down' : 'up';
+  });
+
+  // キャンバスを画面にフィット（整数スケールでピクセル感を保つ）
+  function fitCanvas(){
+    const maxW = Math.min(window.innerWidth - 16, 520);
+    const scale = Math.max(1, Math.floor(maxW / canvas.width));
+    canvas.style.width = (canvas.width * scale) + 'px';
+    canvas.style.height = (canvas.height * scale) + 'px';
+  }
+  window.addEventListener('resize', fitCanvas);
+  fitCanvas();
+
+  // 初期チュートリアル
+  showDialog(['チュートリアル：十字キーは1タップで1マス移動します。','Aで会話、Bでキャンセル。','1マス=48pxなのでドット絵を差し替えやすいです。']);
+
+  // --- メモ: 将来的にマップ差し替えをしたい場合 ---
+  // 今回はHTML内に map 配列を直接記述（分業しやすいシンプル形式）。
+  // 拡張案:
+  // - map を別ファイル（map01.json）にして fetch で読み込む
+  // - 各マップに出入口タイルを用意して location.href で遷移
+  // - 共通の engine.js を作って map データだけを配布すると分業しやすい
+  </script>
+</body>
+</html>
