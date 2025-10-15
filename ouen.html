@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>スポ根応援アプリ</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to bottom, #0a2540, #1a1b5e, #4a148c);
+      color: white;
+      text-align: center;
+      overflow-x: hidden;
+    }
+    h1 {
+      margin-top: 20px;
+      font-size: 1.8em;
+      font-weight: bold;
+    }
+    button {
+      background: rgba(255,255,255,0.1);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      margin: 6px;
+      font-size: 1em;
+    }
+    button:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    #energyBar {
+      width: 80%;
+      height: 20px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 10px;
+      margin: 10px auto;
+      overflow: hidden;
+    }
+    #energyFill {
+      height: 100%;
+      width: 70%;
+      background: linear-gradient(90deg, #ff6b6b, #ffd93d);
+      transition: width 0.3s;
+    }
+    #message {
+      font-size: 1.2em;
+      margin: 15px;
+      min-height: 2em;
+    }
+    #confetti {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="confetti"></canvas>
+  <h1>🔥 スポ根応援アプリ 🔥</h1>
+  <p id="message">よし、行こう！君ならできる！</p>
+
+  <div id="energyBar"><div id="energyFill"></div></div>
+
+  <button onclick="cheer()">元気チャージ</button>
+  <button onclick="useEnergy()">全力ダッシュ</button>
+  <button onclick="completeChallenge()">チャレンジ達成！</button>
+
+  <div style="margin-top:20px;">
+    <button onclick="toggleMusic()">🎵 応援ソング 再生/停止</button>
+    <button onclick="voiceCheer()">声で応援</button>
+  </div>
+
+  <audio id="bgm" loop src="cheer.mp3"></audio>
+
+  <script>
+    let playing = false;
+    let energy = 70;
+    let streak = 0;
+    const messageEl = document.getElementById('message');
+    const fillEl = document.getElementById('energyFill');
+    const canvas = document.getElementById('confetti');
+    const ctx = canvas.getContext('2d');
+
+    function updateEnergy(val) {
+      energy = Math.max(0, Math.min(100, val));
+      fillEl.style.width = energy + '%';
+    }
+
+    function cheer() {
+      const msgs = ["ラストスパート！あと一歩！", "君の努力は裏切らない！", "信じて走れ！", "ここで踏ん張れるのが本物だ！", "みんなが見てる！くじけるな！"];
+      messageEl.textContent = msgs[Math.floor(Math.random() * msgs.length)];
+      updateEnergy(energy + 15);
+      if (navigator.vibrate) navigator.vibrate(100);
+    }
+
+    function useEnergy() {
+      messageEl.textContent = '気合だ！負けるな！';
+      updateEnergy(energy - 12);
+    }
+
+    function completeChallenge() {
+      streak++;
+      messageEl.textContent = `やった！最高だ！連勝:${streak}`;
+      updateEnergy(energy + 30);
+      startConfetti();
+    }
+
+    function toggleMusic() {
+      const bgm = document.getElementById('bgm');
+      if (!playing) {
+        bgm.play().catch(()=>{});
+        playing = true;
+      } else {
+        bgm.pause();
+        playing = false;
+      }
+    }
+
+    function voiceCheer() {
+      const phrases = ["君ならできる！最後まで走り抜けろ！", "諦めたらそこで試合終了だ！", "夢中でやれ！"];
+      const s = new SpeechSynthesisUtterance(phrases[Math.floor(Math.random() * phrases.length)]);
+      s.lang = 'ja-JP';
+      s.rate = 1;
+      speechSynthesis.speak(s);
+    }
+
+    // confetti
+    function startConfetti() {
+      const W = canvas.width = window.innerWidth;
+      const H = canvas.height = window.innerHeight;
+      const pieces = Array.from({ length: 80 }).map(() => createPiece(W, H));
+      let running = true;
+
+      function createPiece(w, h) {
+        return {
+          x: Math.random() * w,
+          y: Math.random() * -h,
+          size: 6 + Math.random() * 12,
+          speedY: 1 + Math.random() * 4,
+          rotation: Math.random() * 2 * Math.PI,
+          spin: (Math.random() - 0.5) * 0.2,
+          color: ['#FF4D4F','#FFA940','#FFD666','#73D13D','#40A9FF'][Math.floor(Math.random()*5)]
+        };
+      }
+
+      function step() {
+        if (!running) return;
+        ctx.clearRect(0, 0, W, H);
+        for (let p of pieces) {
+          p.y += p.speedY;
+          p.rotation += p.spin;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rotation);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+          ctx.restore();
+          if (p.y > H + 20) Object.assign(p, createPiece(W, H));
+        }
+        requestAnimationFrame(step);
+      }
+      step();
+      setTimeout(()=> running = false, 4000);
+    }
+  </script>
+</body>
+</html>

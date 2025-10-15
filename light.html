@@ -2,344 +2,280 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>ぴくぴくライト — Vibe & Torch Playground</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover" />
+<title>iOS-safe Pseudo Vibe — 擬似バイブ付き</title>
 <style>
   :root{
-    --bg:#0f1724;
-    --card:#0b1220;
-    --accent:#00d4ff;
-    --accent-2:#ff5ec4;
-    --glass: rgba(255,255,255,0.06);
+    --bg:#071122; --card:#0b1622; --accent:#7ce7b3; --muted:#9fb0bd;
   }
-  html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP","Hiragino Kaku Gothic ProN",sans-serif;color:#e6f0ff;background:
-    radial-gradient(1200px 600px at 10% 10%, rgba(0,212,255,0.06), transparent),
-    radial-gradient(1000px 500px at 90% 90%, rgba(255,94,196,0.04), transparent),
-    var(--bg);
-    -webkit-font-smoothing:antialiased}
-  .wrap{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:18px}
-  .card{width:100%;max-width:720px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:18px;padding:18px;box-shadow: 0 8px 30px rgba(2,6,23,0.6);backdrop-filter: blur(6px);border:1px solid rgba(255,255,255,0.03)}
-  header{display:flex;align-items:center;gap:12px}
-  h1{font-size:18px;margin:0}
-  p.lead{margin:6px 0 12px;color:#bcd9ff;font-size:13px}
-  .controls{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
-  .big-btn{
-    -webkit-tap-highlight-color: transparent;
-    user-select:none;
-    touch-action:manipulation;
-    width:160px;height:160px;border-radius:20px;display:flex;align-items:center;justify-content:center;flex-direction:column;
-    font-weight:700;font-size:16px;color:#071126;background:linear-gradient(180deg,var(--accent),#00a8d9);
-    box-shadow: 0 8px 20px rgba(0,212,255,0.12), inset 0 -6px 18px rgba(0,0,0,0.08);
-    transition:transform .12s ease, box-shadow .12s ease;cursor:pointer;
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#031021,#051428);color:#eaf6f0;font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif}
+  .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+  .card{width:100%;max-width:760px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));border-radius:16px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,0.6)}
+  h1{margin:0 0 6px;font-size:18px}
+  p.lead{margin:0 0 14px;color:var(--muted);font-size:14px}
+  .controls{display:flex;gap:10px;flex-wrap:wrap}
+  .btn{
+    background:linear-gradient(180deg,#0f2b34,#072025);border:1px solid rgba(255,255,255,0.04);
+    padding:12px 16px;border-radius:10px;color:#dff6ec;font-weight:600;cursor:pointer;
+    box-shadow: 0 6px 18px rgba(2,6,12,0.6);
+    -webkit-tap-highlight-color:transparent;
   }
-  .big-btn:active{transform:translateY(4px) scale(.99);box-shadow:0 4px 12px rgba(0,0,0,0.18)}
-  .big-btn.secondary{background:linear-gradient(180deg,var(--accent-2),#ff4aa0);color:#071126}
-  .small{padding:10px 12px;border-radius:12px;background:var(--glass);border:1px solid rgba(255,255,255,0.04);cursor:pointer}
-  .toggles{display:flex;gap:10px;align-items:center;justify-content:center}
-  .status{margin-top:12px;color:#9fbef7;font-size:13px;text-align:center}
-  .flash-overlay{position:fixed;inset:0;pointer-events:none;background:yellow;opacity:0;transition:opacity .06s linear;mix-blend-mode:screen}
-  .pulse{animation:pop .8s cubic-bezier(.2,.9,.3,1);transform-origin:center}
-  @keyframes pop{0%{transform:scale(.9);opacity:0}50%{transform:scale(1.06);opacity:1}100%{transform:scale(1);opacity:1}}
-  .hint{font-size:12px;color:#a6cfff;margin-top:8px;text-align:center}
-  footer{margin-top:10px;text-align:center;color:#8fb8ff;font-size:12px}
-  .credit{opacity:.7}
-  /* playful icon */
-  .icon{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.25)}
-  .mode-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
-  .row{display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap}
+  .btn:active{transform:translateY(1px)}
+  .big{
+    margin-top:18px;width:100%;display:flex;align-items:center;justify-content:center;padding:22px;border-radius:14px;
+    background:linear-gradient(180deg,#0a2a2b,#062026);font-size:20px;letter-spacing:1px;user-select:none;
+  }
+  .meta{margin-top:12px;color:var(--muted);font-size:13px}
+  .toggle{display:inline-flex;align-items:center;gap:8px}
+  .badge{display:inline-block;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.03);font-size:13px;color:var(--muted)}
+  /* shake animation (applied to .shake-on) */
+  @keyframes shakeX {
+    0%{transform:translateX(0)}
+    10%{transform:translateX(-6px)}
+    30%{transform:translateX(6px)}
+    50%{transform:translateX(-4px)}
+    70%{transform:translateX(4px)}
+    90%{transform:translateX(-2px)}
+    100%{transform:translateX(0)}
+  }
+  .shake-on{animation:shakeX 180ms linear 2}
+  /* screen flash overlay */
+  .screen-flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .12s linear;z-index:9999}
+  /* respects reduced motion */
+  @media (prefers-reduced-motion: reduce){
+    .shake-on{animation:none !important}
+  }
+  /* small footer */
+  footer{margin-top:8px;color:var(--muted);font-size:12px;text-align:center}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="card" role="application" aria-label="Vibe and Light Playground">
-    <header>
-      <div class="icon" aria-hidden="true">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v18M4 7v10M20 7v10" stroke="url(#g)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#00d4ff"/><stop offset="1" stop-color="#ff5ec4"/></linearGradient></defs></svg>
-      </div>
-      <div style="flex:1">
-        <h1>ぴくぴくライト — Vibe & Torch Playground</h1>
-        <p class="lead">スイッチをタッチしてバイブとライトで遊ぼう。端末の権限があればカメラのフラッシュ（torch）を操作します。</p>
-      </div>
-    </header>
+  <div class="card" role="application" aria-label="Pseudo Vibe Playground">
+    <h1>擬似バイブ（iOS向けフォールバック）</h1>
+    <p class="lead">この端末が Vibration API に対応していないとき、自動的に「画面シェイク＋低音サウンド＋画面フラッシュ」でバイブ感を再現します。長押しで強めのパターン。</p>
 
-    <div class="controls" role="region" aria-label="Main controls">
-      <button id="vibeBtn" class="big-btn" aria-pressed="false" aria-label="Vibrate">
-        <div style="font-size:24px">📳</div>
-        <div style="font-size:13px;margin-top:6px">VIBRATE</div>
-      </button>
-
-      <button id="lightBtn" class="big-btn secondary" aria-pressed="false" aria-label="Toggle Light">
-        <div style="font-size:26px">🔦</div>
-        <div style="font-size:13px;margin-top:6px">LIGHT</div>
-      </button>
-    </div>
-
-    <div class="row" style="margin-top:14px">
-      <div class="mode-row">
-        <button id="rhythm" class="small">リズムモード</button>
-        <button id="strobe" class="small">ストロボ（ライト点滅）</button>
-        <button id="stopAll" class="small">全部止める</button>
+    <div class="controls" aria-hidden="false">
+      <button id="tapBtn" class="btn">タップでバイブ</button>
+      <button id="longBtn" class="btn">長押し（強め）</button>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <label class="toggle"><span class="badge" id="capBadge">判定中…</span></label>
       </div>
     </div>
 
-    <div class="status" id="status">機能検出中…</div>
-    <div class="hint">※ 初回でカメラ許可を求められることがあります。許可しないとライトは使えません。</div>
-    <footer class="credit">by ぴくぴくチーム — スマホで遊ぼう！</footer>
+    <div class="big" id="bigArea" tabindex="0" role="button" aria-pressed="false">TOUCH ME</div>
+
+    <div class="meta">
+      <div id="explain">検出：<span id="detectText">—</span></div>
+      <div style="margin-top:6px" class="hint">※ 音は最初のユーザー操作で有効化されます（ブラウザ制約）。</div>
+    </div>
+
+    <footer>動作確認：Safari（iOS）ではハード振動は使えないため擬似バイブになります</footer>
   </div>
 </div>
 
-<div class="flash-overlay" id="flashOverlay" aria-hidden="true"></div>
+<div class="screen-flash" id="screenFlash" aria-hidden="true"></div>
 
 <script>
-/* ---- フィーチャー検出と状態管理 ---- */
-const statusEl = document.getElementById('status');
-const vibeBtn = document.getElementById('vibeBtn');
-const lightBtn = document.getElementById('lightBtn');
-const rhythmBtn = document.getElementById('rhythm');
-const strobeBtn = document.getElementById('strobe');
-const stopAllBtn = document.getElementById('stopAll');
-const flashOverlay = document.getElementById('flashOverlay');
-
-let supportsVibrate = 'vibrate' in navigator;
-let supportsMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-let torchTrack = null;
-let mediaStream = null;
-let torchOn = false;
-let strobeInterval = null;
-let rhythmInterval = null;
-
-/* 小さなサウンド効果（データURIの短いビープ） */
-const beep = (() => {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  return (freq=440, time=0.06, vol=0.06) => {
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.value = freq;
-    g.gain.value = vol;
-    o.connect(g); g.connect(ctx.destination);
-    o.start();
-    o.stop(ctx.currentTime + time);
-  };
-})();
-
-/* ステータス更新 */
-function setStatus(text){
-  statusEl.textContent = text;
-}
-
-/* 初回検出表示 */
-(async function init(){
-  let msgs = [];
-  msgs.push(supportsVibrate ? 'バイブ対応 ✅' : 'バイブ非対応 ❌');
-  msgs.push(supportsMedia ? 'カメラAPIあり（ライト検出可能性あり）' : 'カメラAPIなし（ライト不可）');
-  setStatus(msgs.join(' ・ '));
-})();
-
-/* ---- バイブ関連 ---- */
-function doVibrate(pattern){
-  if(!supportsVibrate){
-    setStatus('この端末はVibration API未対応です。');
-    // 代替アニメーションで視覚フィードバック
-    animatePulse(vibeBtn);
-    return;
-  }
-  // navigator.vibrateは数値または配列を受け取る
-  navigator.vibrate(pattern);
-  animatePulse(vibeBtn);
-  beep(620, 0.07, 0.045);
-}
-
-/* ---- ライト（torch）関連 ----
-   実装方針：
-   - getUserMediaでvideoトラックを取る（バックカメラ推奨）
-   - track.applyConstraints({advanced:[{torch:true}]}) を試す
-   - 一部ブラウザは ImageCapture を必要とするため、両方試す
+/*
+  Pseudo-vibration HTML
+  - Auto-detect vibration support and iOS
+  - If vibrate supported -> use navigator.vibrate
+  - Else -> fakeVibration: low-frequency sound + screen shake + flash
+  - Respects prefers-reduced-motion
 */
-async function initTorchStream(){
-  if(torchTrack) return; // 既に取得済み
-  if(!supportsMedia){ throw new Error('mediaDevices 未対応'); }
-  // カメラは back（環境）を優先してリクエスト
-  const constraints = {video:{facingMode:{ideal:'environment'}}};
-  mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-  torchTrack = mediaStream.getVideoTracks()[0];
-  // 一部端末は ImageCapture 必要だが applyConstraints が効けばok
-  return torchTrack;
-}
 
-async function setTorch(on){
+// helpers
+const isIOS = (() => {
+  // iPadOS with desktop UA also needs detection, so check platform & touch capability
+  const ua = navigator.userAgent || navigator.vendor || '';
+  // simple, robust check for iOS / iPadOS
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  // iPadOS 13+ may show MacIntel
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
+  return false;
+})();
+
+const supportsVibrate = 'vibrate' in navigator && typeof navigator.vibrate === 'function';
+
+// UI nodes
+const tapBtn = document.getElementById('tapBtn');
+const longBtn = document.getElementById('longBtn');
+const bigArea = document.getElementById('bigArea');
+const capBadge = document.getElementById('capBadge');
+const detectText = document.getElementById('detectText');
+const screenFlash = document.getElementById('screenFlash');
+
+// motion preference
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// audio setup (lazy init per browser gesture)
+let audioCtx = null;
+function ensureAudio(){
+  if(audioCtx) return audioCtx;
   try{
-    if(on){
-      if(!torchTrack){
-        await initTorchStream();
-      }
-      // try applyConstraints first
-      const capabilities = torchTrack.getCapabilities ? torchTrack.getCapabilities() : {};
-      if(capabilities.torch || (capabilities.fillLightMode && capabilities.fillLightMode.length)){
-        // ブラウザがtorch機能を持っている可能性
-        await torchTrack.applyConstraints({advanced:[{torch:true}]});
-        torchOn = true;
-        setStatus('ライト：ON');
-        beep(800,0.07,0.06);
-        return true;
-      } else {
-        // 試しに ImageCapture を使って torch を切り替える実装
-        // Some browsers (Chrome Android) allow applyConstraints even without capabilities listed, but others require ImageCapture.
-        try{
-          const ImageCapture = window.ImageCapture;
-          if(ImageCapture){
-            const ic = new ImageCapture(torchTrack);
-            // no direct set torch via ImageCapture spec — but applyConstraints fallback often works
-            await torchTrack.applyConstraints({advanced:[{torch:true}]});
-            torchOn = true;
-            setStatus('ライト：ON');
-            beep(800,0.07,0.06);
-            return true;
-          }
-        }catch(e){ /* ignore */ }
-      }
-      // fallback: if none worked, emulate with screen flash
-      screenFlash();
-      setStatus('ライト：画面フラッシュで代用 (torch未対応)');
-      return false;
-    } else {
-      // turn off
-      if(torchTrack){
-        try{
-          await torchTrack.applyConstraints({advanced:[{torch:false}]});
-        }catch(e){ /* ignore */ }
-        // stop stream to release camera
-        try{
-          mediaStream.getTracks().forEach(t=>t.stop());
-        }catch(e){}
-        torchTrack = null;
-        mediaStream = null;
-      }
-      torchOn = false;
-      setStatus('ライト：OFF');
-      beep(420,0.05,0.04);
-      return true;
-    }
-  }catch(err){
-    // 権限拒否など
-    console.warn('torch error', err);
-    setStatus('ライト操作に失敗: '+(err && err.message ? err.message : err));
-    // fallback to screen flash to at least give something fun
-    if(on) screenFlash();
-    return false;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+  }catch(e){
+    audioCtx = null;
+    return null;
   }
 }
 
-function screenFlash(){
-  flashOverlay.style.opacity = '1';
-  setTimeout(()=>{ flashOverlay.style.opacity = '0'; }, 120);
+// low-frequency "thump" -> makes tactile impression
+function playThump(duration = 0.08, freq = 120){
+  const ctx = ensureAudio();
+  if(!ctx) return;
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'sine';
+  o.frequency.value = freq;
+  g.gain.value = 0.02; // keep it gentle
+  o.connect(g); g.connect(ctx.destination);
+  o.start();
+  g.gain.setValueAtTime(0.02, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+  o.stop(ctx.currentTime + duration + 0.02);
 }
 
-/* ---- UIアクション ---- */
-vibeBtn.addEventListener('click', async (ev)=>{
-  ev.currentTarget.classList.add('pulse');
-  setTimeout(()=>ev.currentTarget.classList.remove('pulse'), 800);
-  // 単発 + ミニパターンで楽しく
-  doVibrate([40,30,60,20,40]);
+// short click sound (higher)
+function playClick(duration = 0.06, freq = 700){
+  const ctx = ensureAudio();
+  if(!ctx) return;
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'triangle';
+  o.frequency.value = freq;
+  g.gain.value = 0.012;
+  o.connect(g); g.connect(ctx.destination);
+  o.start();
+  g.gain.setValueAtTime(0.012, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+  o.stop(ctx.currentTime + duration + 0.02);
+}
+
+// fake vibration: combine audio + visual
+function fakeVibration(totalMs = 160){
+  // If user prefers reduced motion, only play sound (no shake/flash)
+  playThump(0.10, 100);
+  playClick(0.05, 1000);
+
+  if(!reduceMotion){
+    // apply shake class to bigArea for short time (prefers-reduced-motion will disable animation in CSS)
+    bigArea.classList.add('shake-on');
+    setTimeout(()=> bigArea.classList.remove('shake-on'), 400);
+    // screen flash tiny
+    screenFlash.style.opacity = 1;
+    setTimeout(()=> screenFlash.style.opacity = 0, 140);
+  }
+}
+
+// unified vibration function
+function doVibrate(patternName = 'short', strong = false){
+  const patterns = {
+    short: [30],
+    long: [120],
+    pulse: [40, 50, 40],
+    fun: [20,30,20,30,60]
+  };
+  const p = patterns[patternName] || patterns.short;
+
+  if(supportsVibrate){
+    try {
+      // Choose stronger pattern for long press
+      if(strong) navigator.vibrate([150,80,150]);
+      else navigator.vibrate(p);
+      // For browsers that silently accept but do nothing, fallback not trivial.
+      return;
+    } catch(e){
+      // fall through to fake
+    }
+  }
+  // fallback when no hardware vibrate
+  // if strong, make it longer
+  if(strong) fakeVibration(300);
+  else fakeVibration(160);
+}
+
+// mark detection status
+function updateDetectionBadge(){
+  let txt = '';
+  if(supportsVibrate) txt = 'Vibration API 支持あり';
+  else txt = 'Vibration API 未対応（フォールバック）';
+  if(isIOS) txt += ' — iOS 検出';
+  detectText.textContent = txt;
+  capBadge.textContent = supportsVibrate ? '振動可' : '擬似振動';
+}
+
+// handlers (ensure audio context created on first gesture)
+function onUserGestureInit(){
+  // create audio context on first user gesture to satisfy autoplay policies
+  ensureAudio();
+  // resume if suspended
+  if(audioCtx && audioCtx.state === 'suspended'){
+    audioCtx.resume().catch(()=>{});
+  }
+}
+
+// wire buttons
+tapBtn.addEventListener('click', (e) => {
+  onUserGestureInit();
+  doVibrate('short', false);
+});
+longBtn.addEventListener('mousedown', (e) => {
+  // desktop long-press preview
+});
+longBtn.addEventListener('click', (e) => {
+  onUserGestureInit();
+  doVibrate('long', true);
 });
 
-lightBtn.addEventListener('click', async (ev)=>{
-  ev.currentTarget.classList.add('pulse');
-  setTimeout(()=>ev.currentTarget.classList.remove('pulse'), 800);
-  lightBtn.disabled = true;
-  try{
-    if(!torchOn){
-      const ok = await setTorch(true);
-      if(!ok){
-        // torch not supported — toggle an 'on-screen' style
-        lightBtn.setAttribute('aria-pressed','true');
-        lightBtn.style.boxShadow = '0 10px 30px rgba(255,200,80,0.12), inset 0 -6px 18px rgba(0,0,0,0.06)';
-        setTimeout(()=>lightBtn.style.boxShadow='0 8px 20px rgba(0,212,255,0.12), inset 0 -6px 18px rgba(0,0,0,0.08)',600);
-      } else {
-        lightBtn.setAttribute('aria-pressed','true');
-      }
-    } else {
-      await setTorch(false);
-      lightBtn.setAttribute('aria-pressed','false');
-    }
-  }finally{
-    lightBtn.disabled = false;
+// big area: support tap and long press on touch
+let longTimer = null;
+let pointerDownTime = 0;
+bigArea.addEventListener('touchstart', (e) => {
+  onUserGestureInit();
+  pointerDownTime = Date.now();
+  longTimer = setTimeout(()=> {
+    doVibrate('fun', true);
+    longTimer = null;
+  }, 600); // long press threshold
+}, {passive: true});
+bigArea.addEventListener('touchend', (e) => {
+  if(longTimer){ clearTimeout(longTimer); longTimer = null; doVibrate('short', false); }
+});
+bigArea.addEventListener('mousedown', (e) => {
+  onUserGestureInit();
+  pointerDownTime = Date.now();
+  longTimer = setTimeout(()=> {
+    doVibrate('fun', true);
+    longTimer = null;
+  }, 600);
+});
+bigArea.addEventListener('mouseup', (e) => {
+  if(longTimer){ clearTimeout(longTimer); longTimer = null; doVibrate('short', false); }
+});
+bigArea.addEventListener('keydown', (e) => {
+  if(e.key === ' ' || e.key === 'Enter'){
+    onUserGestureInit();
+    doVibrate('short', false);
   }
 });
 
-/* リズムモード：連続で短いバイブとライトを同期 */
-rhythmBtn.addEventListener('click', async ()=>{
-  stopRhythm();
-  setStatus('リズムモード開始 🎵');
-  let beat = 0;
-  rhythmInterval = setInterval(async ()=>{
-    // simple 3-beat pattern
-    const pattern = (beat % 3 === 0) ? [50] : [30];
-    doVibrate(pattern);
-    // small screen flash for visual
-    flashOverlay.style.opacity = '0.9';
-    setTimeout(()=>flashOverlay.style.opacity='0',80);
-    beat++;
-  }, 320);
+// init UI
+updateDetectionBadge();
+
+// safety: stop visual effects when page hidden
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    bigArea.classList.remove('shake-on');
+    screenFlash.style.opacity = 0;
+  }
 });
 
-/* ストロボモード：ライト点滅を試す（torchがなければ画面フラッシュ） */
-strobeBtn.addEventListener('click', async ()=>{
-  stopStrobe();
-  setStatus('ストロボ開始 ⚡');
-  let on = false;
-  strobeInterval = setInterval(async ()=>{
-    on = !on;
-    if(torchTrack || supportsMedia){
-      // try to toggle torch; if unsupported, screenFlash will run
-      await setTorch(on).catch(()=>screenFlash());
-    } else {
-      screenFlash();
-    }
-  }, 120);
-});
+// friendly hint: if user taps anywhere, ensure audio is ready
+document.addEventListener('pointerdown', onUserGestureInit, {once:true});
 
-/* 全停止 */
-stopAllBtn.addEventListener('click', ()=>{
-  stopRhythm();
-  stopStrobe();
-  setTorch(false);
-  navigator.vibrate(0); // stop vibration
-  setStatus('すべて停止 — おしまい');
-});
-
-function stopRhythm(){
-  if(rhythmInterval){ clearInterval(rhythmInterval); rhythmInterval = null; }
-}
-function stopStrobe(){
-  if(strobeInterval){ clearInterval(strobeInterval); strobeInterval = null; }
-}
-
-/* アニメ・アクセシビリティ補助 */
-function animatePulse(el){
-  el.classList.add('pulse');
-  setTimeout(()=>el.classList.remove('pulse'),700);
-}
-
-/* ページ離脱でカメラ解放 */
-window.addEventListener('pagehide', ()=>{
-  if(mediaStream) mediaStream.getTracks().forEach(t=>t.stop());
-});
-
-/* 余談：長押しでトリック（デモ機能） */
-vibeBtn.addEventListener('touchstart', (e)=>{
-  // 長押しで強振動（ユーザーを驚かせないよう注意して短く）
-  e.currentTarget.vibeTimer = setTimeout(()=>doVibrate([120,40,120]),600);
-});
-vibeBtn.addEventListener('touchend', (e)=>{ clearTimeout(e.currentTarget.vibeTimer); });
-
-/* デスクトップ用にクリックでのヒント */
-if(!('ontouchstart' in window)){
-  setStatus((statusEl.textContent||'') + ' — タッチでより楽しいよ（スマホ推奨）');
-}
-
-/* 注意：一部機種・ブラウザではtorch制御が制限されています。
-   もしライトがONにならない場合は、画面フラッシュが代用されます。 */
 </script>
 </body>
 </html>
