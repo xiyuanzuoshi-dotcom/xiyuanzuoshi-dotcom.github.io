@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>リアルタイム物体検出カメラ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      color: #fff;
+      font-family: "Arial", sans-serif;
+      text-align: center;
+      overflow: hidden;
+    }
+    video, canvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+    #loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 20px;
+      background: rgba(0,0,0,0.6);
+      padding: 20px 40px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">モデル読み込み中...</div>
+  <video id="camera" autoplay muted playsinline></video>
+  <canvas id="overlay"></canvas>
+
+  <script>
+    const video = document.getElementById('camera');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    const loading = document.getElementById('loading');
+    let model;
+
+    // カメラ起動
+    async function setupCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" }, // 背面カメラ
+        audio: false
+      });
+      video.srcObject = stream;
+      return new Promise(resolve => {
+        video.onloadedmetadata = () => resolve(video);
+      });
+    }
+
+    // 描画ループ
+    async function detectFrame() {
+      const predictions = await model.detect(video);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      predictions.forEach(pred => {
+        const [x, y, w, h] = pred.bbox;
+        const text = `${pred.class} (${Math.round(pred.score * 100)}%)`;
+
+        ctx.strokeStyle = "#00FF00";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x, y, w, h);
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+        ctx.fillRect(x, y - 25, ctx.measureText(text).width + 10, 25);
+
+        ctx.fillStyle = "#00FF00";
+        ctx.fillText(text, x + 5, y - 7);
+      });
+
+      requestAnimationFrame(detectFrame);
+    }
+
+    // 初期化
+    async function main() {
+      await setupCamera();
+      video.play();
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      model = await cocoSsd.load();
+      loading.style.display = "none";
+      detectFrame();
+    }
+
+    main().catch(err => {
+      loading.textContent = "⚠️ カメラ起動エラー: " + err.message;
+      console.error(err);
+    });
+  </script>
+</body>
+</html>
