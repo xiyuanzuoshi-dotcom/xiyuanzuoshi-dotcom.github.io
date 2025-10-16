@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>蒼の部屋</title>
+<style>
+body{background:#ddeeff;margin:0;padding:0;font-family:sans-serif;}
+#game{display:block;margin:20px auto;border:4px solid #444;image-rendering:pixelated;}
+#dialog{position:fixed;left:50%;transform:translateX(-50%);bottom:50px;background:rgba(0,0,0,0.8);color:#fff;padding:10px 16px;border-radius:10px;display:none;max-width:90%;}
+.controls{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:100%;max-width:520px;}
+.dpad{position:absolute;left:8px;bottom:6px;width:140px;height:140px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:6px;}
+.dpad button{border-radius:10px;background:#222;border:2px solid #444;color:#fff;font-weight:700;font-size:18px}
+.center{background:transparent;border:0}
+.actions{position:absolute;right:8px;bottom:6px;display:flex;flex-direction:column;gap:12px;}
+.btn{width:72px;height:72px;border-radius:14px;background:#c33;border:3px solid #700;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 6px 0 rgba(0,0,0,0.6)}
+.btn.b{background:#444;border:3px solid #222}
+</style>
+</head>
+<body>
+<canvas id="game" width="480" height="384"></canvas>
+<div id="dialog"><p id="dialog-text"></p></div>
+
+<!-- コントローラ -->
+<div class="controls">
+  <div class="dpad" id="dpad">
+    <button></button><button data-dir="up">▲</button><button></button>
+    <button data-dir="left">◀</button><button class="center"></button><button data-dir="right">▶</button>
+    <button></button><button data-dir="down">▼</button><button></button>
+  </div>
+  <div class="actions">
+    <div class="btn a" id="btnA">A</div>
+    <div class="btn b" id="btnB">B</div>
+  </div>
+</div>
+
+<script type="module">
+import { setupControls } from "./common.js";
+
+const TILE=48, W=10, H=8;
+const canvas=document.getElementById("game"), ctx=canvas.getContext("2d");
+const player={x:5,y:6,dir:"up",moving:false,px:5*TILE,py:6*TILE};
+const exit={x:5,y:7};
+const shelves=[
+  {x:2,y:2,text:["古い詩集が並んでいる。","ページの隅に小さく「藤沢 蒼」とある。"]},
+  {x:4,y:2,text:["漫画がぎっしり詰まっている。"]},
+  {x:6,y:2,text:["旅行アルバムが置かれている。","笑顔の少女と青い海。"]}
+];
+
+const dialog=document.getElementById("dialog"),dtext=document.getElementById("dialog-text");
+let queue=[];
+
+function showDialog(lines){
+  queue=lines.slice();
+  dialog.style.display="block";
+  dtext.textContent=queue.shift();
+}
+function nextDialog(){
+  if(queue.length>0)dtext.textContent=queue.shift();
+  else dialog.style.display="none";
+}
+
+function isWalkable(x,y){return !(x<0||y<0||x>=W||y>=H);}
+
+function attemptMove(dir){
+  if(player.moving||dialog.style.display==='block')return;
+  player.dir = dir; // ← 向きを更新！
+  let nx=player.x,ny=player.y;
+  if(dir==='up')ny--;
+  else if(dir==='down')ny++;
+  else if(dir==='left')nx--;
+  else if(dir==='right')nx++;
+  if(!isWalkable(nx,ny))return;
+
+  // 出口チェック
+  if(nx===exit.x&&ny===exit.y){
+    window.location.href='index.html';
+    return;
+  }
+
+  player.x=nx;
+  player.y=ny;
+  player.px=nx*TILE;
+  player.py=ny*TILE;
+}
+
+function pressA(){
+  if(dialog.style.display==='block'){nextDialog();return;}
+  let tx=player.x,ty=player.y;
+  if(player.dir==='up')ty--;
+  else if(player.dir==='down')ty++;
+  else if(player.dir==='left')tx--;
+  else if(player.dir==='right')tx++;
+  const shelf=shelves.find(s=>s.x===tx&&s.y===ty);
+  if(shelf){showDialog(shelf.text);}
+}
+function pressB(){
+  dialog.style.display='none';
+  queue=[];
+}
+
+setupControls({
+  onMove: attemptMove,
+  onA: pressA,
+  onB: pressB
+});
+
+function render(){
+  ctx.fillStyle='#bcd';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // 本棚
+  ctx.fillStyle='#999';
+  for(const s of shelves)ctx.fillRect(s.x*TILE,s.y*TILE,TILE,TILE);
+
+  // 出口
+  ctx.fillStyle='#55f';
+  ctx.fillRect(exit.x*TILE,exit.y*TILE,TILE,TILE);
+
+  // プレイヤー
+  ctx.fillStyle='#33a';
+  ctx.fillRect(player.px,player.py,TILE,TILE);
+
+  requestAnimationFrame(render);
+}
+render();
+
+showDialog(["蒼の部屋だ。","どこか懐かしい匂いがする…"]);
+</script>
+</body>
+</html>

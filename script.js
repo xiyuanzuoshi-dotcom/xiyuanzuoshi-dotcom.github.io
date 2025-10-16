@@ -29,6 +29,43 @@ function renderScene() {
     charElement.style.backgroundImage = scene.character ? `url(${scene.character})` : "";
     choicesContainer.innerHTML = "";
 
+    // ✅ 特別処理：id=4 のときボタン出現（aoheya.html へ遷移）
+    if (scene.id === 4) {
+        const toHeyaBtn = document.createElement("button");
+        toHeyaBtn.textContent = "部屋へ行く";
+        Object.assign(toHeyaBtn.style, {
+            position: "absolute",
+            top: "10px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: "9999",
+            padding: "12px 25px",
+            fontSize: "1.2em",
+            borderRadius: "12px",
+            background: "rgba(255,255,255,0.9)",
+            border: "2px solid #ccc",
+            cursor: "pointer",
+            boxShadow: "0 0 10px rgba(255,255,255,0.5)",
+            transition: "all 0.3s ease"
+        });
+
+        toHeyaBtn.onmouseenter = () => (toHeyaBtn.style.background = "white");
+        toHeyaBtn.onmouseleave = () => (toHeyaBtn.style.background = "rgba(255,255,255,0.9)");
+
+        toHeyaBtn.onclick = () => {
+            const effect = document.createElement("div");
+            effect.id = "world-shift-effect";
+            effect.innerHTML = `<div class="scanline"></div><div class="pixelate"></div>`;
+            document.body.appendChild(effect);
+
+            setTimeout(() => {
+                window.location.href = "aoheya.html";
+            }, 1500);
+        };
+
+        document.body.appendChild(toHeyaBtn);
+    }
+
     // ✅ 特別処理：id=5 のときボタン出現
     if (scene.id === 5) {
         const toHeyaBtn = document.createElement("button");
