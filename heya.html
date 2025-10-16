@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>部屋</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            background: #c7e9f1;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+        .room-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+        .room-container h1 {
+            font-size: 2.5em;
+            color: #333;
+        }
+        .room-container p {
+            font-size: 1.2em;
+            color: #444;
+        }
+        .room-container button {
+            padding: 10px 25px;
+            font-size: 1.1em;
+            border-radius: 8px;
+            border: 2px solid #999;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .room-container button:hover {
+            background: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <!-- フェードイン演出 -->
+    <div id="heya-fadein"></div>
+
+    <!-- メイン表示 -->
+    <div class="room-container">
+        <h1>🌸 ここはユイの部屋 🌸</h1>
+        <p>世界が2Dになったような不思議な空間だ…</p>
+        <button id="back-btn">戻る</button>
+    </div>
+
+    <script>
+        // ✅ 確実にクリックイベントをバインド
+        document.getElementById("back-btn").addEventListener("click", () => {
+            // フェードアウトエフェクト生成
+            const effect = document.createElement("div");
+            effect.id = "world-shift-effect";
+            effect.innerHTML = `<div class="scanline"></div><div class="pixelate"></div>`;
+            document.body.appendChild(effect);
+
+            // 🔥 1.5秒後に確実に遷移
+            setTimeout(() => {
+                // 相対パスでOK（同じフォルダ内ならこれで動く）
+                window.location.href = "./index.html";
+            }, 1500);
+        });
+    </script>
+</body>
+</html>
