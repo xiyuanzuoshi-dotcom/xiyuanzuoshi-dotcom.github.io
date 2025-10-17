@@ -3,17 +3,44 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>スマホドットRPG — NPC修正版</title>
+<title>スマホドットRPG — iOS対応版</title>
 <style>
-  html,body{height:100%;margin:0;background:#071018;color:#e6f7ff;font-family:sans-serif;touch-action:none;}
-  canvas{image-rendering:pixelated;border:6px solid #111;background:#073;display:block;margin:20px auto;touch-action:none;}
-  #dialog{position:fixed;left:50%;transform:translateX(-50%);bottom:140px;max-width:94%;background:rgba(0,0,0,0.9);color:#fff;border:3px solid #333;padding:12px 14px;border-radius:10px;font-size:16px;display:none;transition:opacity 0.3s;}
+  html,body{
+    height:100%;margin:0;
+    background:#071018;color:#e6f7ff;
+    font-family:sans-serif;
+    touch-action:none;
+    overscroll-behavior:none;
+  }
+  canvas{
+    image-rendering:pixelated;
+    border:6px solid #111;
+    background:#073;
+    display:block;
+    margin:20px auto;
+    touch-action:none;
+  }
+  #dialog{
+    position:fixed;
+    left:50%;
+    transform:translateX(-50%);
+    bottom:140px;
+    max-width:94%;
+    background:rgba(0,0,0,0.9);
+    color:#fff;
+    border:3px solid #333;
+    padding:12px 14px;
+    border-radius:10px;
+    font-size:16px;
+    display:none;
+    transition:opacity 0.3s;
+  }
 </style>
 </head>
 <body>
 <canvas id="game" width="480" height="384"></canvas>
 <div id="dialog"></div>
-<audio id="bgm" src="https://cdn.pixabay.com/download/audio/2022/03/09/audio_9d39a4f567.mp3?filename=peaceful-ambient-110624.mp3" loop autoplay></audio>
+<audio id="bgm" src="https://cdn.pixabay.com/download/audio/2022/03/09/audio_9d39a4f567.mp3?filename=peaceful-ambient-110624.mp3" loop></audio>
 
 <script>
 const TILE=48, WORLD_W=20, WORLD_H=15;
@@ -43,10 +70,19 @@ const player={x:10,y:7,px:10*TILE,py:7*TILE,dir:'down',moving:false,moveDir:null
 const camera={x:0,y:0};
 
 const npcs=[
-  {x:8,y:7,px:8*TILE,py:7*TILE,x0:8,dir:'down',range:2,dirH:1,
-   text:["こんにちは、旅の人。","この先の森には不思議な光が見えるんだ。","気をつけて進むといいよ。","…そうそう、森の中では足元にも注意するんだ。"]},
-  {x:14,y:5,px:14*TILE,py:5*TILE,x0:14,dir:'down',range:3,dirH:1,
-   text:["おや、見かけない顔だね。","私はこの村の長老だ。","昔、ここに竜が眠っていたという。","……信じるかい？","この村にはまだ秘密が眠っているかもしれない。"]}
+  {x:8,y:7,px:8*TILE,py:7*TILE,text:[
+    "こんにちは、旅の人。",
+    "この先の森には不思議な光が見えるんだ。",
+    "気をつけて進むといいよ。",
+    "…そうそう、森の中では足元にも注意するんだ。"
+  ]},
+  {x:14,y:5,px:14*TILE,py:5*TILE,text:[
+    "おや、見かけない顔だね。",
+    "私はこの村の長老だ。",
+    "昔、ここに竜が眠っていたという。",
+    "……信じるかい？",
+    "この村にはまだ秘密が眠っているかもしれない。"
+  ]}
 ];
 
 const dialog=document.getElementById("dialog");
@@ -57,7 +93,9 @@ let npcMoveTimer=0;
 function isWalkable(x,y){
   if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;
   if(world[y][x]===1||world[y][x]===4)return false;
-  for(const npc of npcs){if(Math.round(npc.x)===x&&Math.round(npc.y)===y)return false;}
+  for(const npc of npcs){
+    if(Math.round(npc.x)===x&&Math.round(npc.y)===y)return false;
+  }
   return true;
 }
 
@@ -92,7 +130,7 @@ function updateNPCs(dt){
   if(npcMoveTimer>=5000){ // 5秒ごと
     npcMoveTimer=0;
     for(const npc of npcs){
-      if(activeNPC===npc)continue; // 会話中は停止
+      if(activeNPC===npc)continue;
       const dir=Math.floor(Math.random()*4);
       const dx=[1,-1,0,0][dir];
       const dy=[0,0,1,-1][dir];
@@ -121,7 +159,7 @@ function checkNPCProximity(){
   }
 }
 
-/* === 会話処理 === */
+/* === 会話 === */
 function showDialog(text){
   dialog.style.display="block";
   dialog.textContent=text;
@@ -138,7 +176,7 @@ function nextDialog(){
   else {hideDialog();fadeInBGM();activeNPC=null;}
 }
 
-/* === 長押しでキャンセル＆タップで次へ === */
+/* === 長押しでキャンセル === */
 let holdTimer=null;
 let isHolding=false;
 dialog.addEventListener("touchstart",()=>{
@@ -150,7 +188,7 @@ dialog.addEventListener("touchstart",()=>{
 });
 dialog.addEventListener("touchend",()=>{
   if(holdTimer){clearTimeout(holdTimer);}
-  if(!isHolding)nextDialog(); // 通常タップ時のみ次ページへ
+  if(!isHolding)nextDialog();
 });
 
 /* === BGMフェード === */
@@ -171,13 +209,24 @@ function fadeInBGM(){
   },80);
 }
 
+/* === iOS Safari初回タップでBGM許可 === */
+let bgmStarted=false;
+document.body.addEventListener("touchstart",()=>{
+  if(!bgmStarted){
+    bgm.play().catch(()=>{}); // ユーザー操作後に再生
+    bgmStarted=true;
+  }
+},{once:true});
+
 /* === スワイプ操作 === */
 canvas.addEventListener("touchstart",e=>{
+  e.preventDefault();
   const t=e.touches[0];
   touchStartX=t.clientX;touchStartY=t.clientY;
   isTouching=true;
 });
 canvas.addEventListener("touchmove",e=>{
+  e.preventDefault();
   if(!isTouching)return;
   const t=e.touches[0];
   const dx=t.clientX-touchStartX,dy=t.clientY-touchStartY;
@@ -189,7 +238,10 @@ canvas.addEventListener("touchmove",e=>{
   }
   if(dir&&dir!==currentDir){currentDir=dir;movePlayer(dir);}
 });
-canvas.addEventListener("touchend",()=>{isTouching=false;currentDir=null;});
+canvas.addEventListener("touchend",e=>{
+  e.preventDefault();
+  isTouching=false;currentDir=null;
+});
 
 /* === 描画 === */
 function render(){
