@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>スマホドットRPG — NPC会話対応</title>
+<title>スマホドットRPG — NPC会話＋当たり判定</title>
 <style>
 html,body{height:100%;margin:0;background:#071018;color:#e6f7ff;font-family:sans-serif;touch-action:none;}
 #wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px}
@@ -16,16 +16,17 @@ canvas{image-rendering:pixelated;border:6px solid #111;background:#073;display:b
   border-radius:10px;
   padding:6px 10px;
   font-size:14px;
-  line-height:1.3;
-  max-width:160px;
+  line-height:1.4;
+  max-width:180px;
   display:none;
   transform:translate(-50%,-100%);
+  user-select:none;
 }
 </style>
 </head>
 <body>
 <div id="wrap">
-  <h3>スマホドットRPG — NPC会話対応</h3>
+  <h3>スマホドットRPG — NPC会話＋当たり判定</h3>
   <div style="position:relative;">
     <canvas id="game" width="480" height="384"></canvas>
     <div id="npcDialog" class="npc-dialog"></div>
@@ -60,17 +61,50 @@ const world=[
 const player={x:10,y:7,dir:'down',moving:false,px:10*TILE,py:7*TILE};
 const camera={x:0,y:0,targetX:0,targetY:0};
 const NPCS=[
-  {x:8,y:6,color:'#ff4444',dialog:['ようこそ、この村へ！','北の森には魔物が出るらしいぞ。']},
-  {x:15,y:9,color:'#ffaa00',dialog:['こんにちは。','今日はいい天気だね。','井戸の水もきれいだよ。']},
-  {x:5,y:11,color:'#44aaff',dialog:['旅人さん？','ここで一休みしていくといいよ。']}
+  {
+    x:8,y:6,color:'#ff4444',
+    dialog:[
+      'ようこそ、この村へ！',
+      'この先にある森には古い祠があるんだ。',
+      '誰も近づかないけど、夜になると灯りが見えるって噂だよ。',
+      '…君、本当に行くつもりなのかい？'
+    ]
+  },
+  {
+    x:15,y:9,color:'#ffaa00',
+    dialog:[
+      'やあ、旅人さん！',
+      'この村は昔、湖の底に沈みかけたことがあるんだ。',
+      'けど、不思議な力が働いて助かったらしい。',
+      '今でも湖のほとりでは、青白い光が時々見えるそうだよ。'
+    ]
+  },
+  {
+    x:5,y:11,color:'#44aaff',
+    dialog:[
+      '……眠い。',
+      '昨日は遅くまで井戸の修理をしてたんだ。',
+      'まったく、あの子猫が落ちるからって言うけど…',
+      'あぁもう、寝かせてくれ…。'
+    ]
+  }
 ];
 
 let activeNPC=null;
 let messageIndex=0;
+let cancelHold=false;
+let holdTimer=null;
 
-/* === 関数 === */
-function isWalkable(x,y){if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;const t=world[y][x];return t!==1&&t!==4;}
+/* === 当たり判定 === */
+function isWalkable(x,y){
+  if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;
+  const t=world[y][x];
+  if(t===1||t===4)return false;
+  for(const npc of NPCS){ if(npc.x===x && npc.y===y) return false; }
+  return true;
+}
 
+/* === プレイヤー移動 === */
 function attemptMove(dir){
   if(player.moving)return;
   let nx=player.x,ny=player.y;
@@ -86,6 +120,7 @@ function attemptMove(dir){
   }requestAnimationFrame(step);
 }
 
+/* === カメラ追従 === */
 function updateCameraTarget(){
   let tx=player.px+TILE/2-480/2;
   let ty=player.py+TILE/2-384/2;
@@ -94,7 +129,7 @@ function updateCameraTarget(){
   camera.targetX=tx;camera.targetY=ty;
 }
 
-/* === NPCとの距離チェック === */
+/* === NPC距離チェック === */
 function checkNPCProximity(){
   activeNPC=null;
   for(const npc of NPCS){
@@ -105,15 +140,15 @@ function checkNPCProximity(){
       break;
     }
   }
-
   if(activeNPC){
     showNPCDialog(activeNPC);
   }else{
     dialogEl.style.display='none';
+    messageIndex=0;
   }
 }
 
-/* === 吹き出し制御 === */
+/* === 吹き出し === */
 function showNPCDialog(npc){
   const lines=npc.dialog;
   dialogEl.textContent=lines[messageIndex];
@@ -124,8 +159,20 @@ function showNPCDialog(npc){
   dialogEl.style.display='block';
 }
 
-/* === 吹き出しをタップしたら次の文へ === */
+/* === 吹き出し操作 === */
 dialogEl.addEventListener('touchstart',()=>{
+  if(!activeNPC)return;
+  cancelHold=false;
+  holdTimer=setTimeout(()=>{
+    cancelHold=true;
+    dialogEl.style.display='none';
+    messageIndex=0;
+  },700); // 長押しでキャンセル
+});
+
+dialogEl.addEventListener('touchend',()=>{
+  clearTimeout(holdTimer);
+  if(cancelHold)return;
   if(!activeNPC)return;
   const lines=activeNPC.dialog;
   messageIndex++;
@@ -157,7 +204,7 @@ function render(){
   ctx.fillRect(player.px-camera.x+4,player.py-camera.y+4,TILE-8,TILE-8);
 }
 
-/* === ループ === */
+/* === メインループ === */
 function gameLoop(){
   updateCameraTarget();
   checkNPCProximity();
