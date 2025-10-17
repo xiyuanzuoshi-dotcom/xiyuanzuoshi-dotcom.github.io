@@ -2,198 +2,216 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>スマホドットRPG — NPC巡回＋BGMフェード版</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>蒼の村と宝箱</title>
 <style>
-  html,body{height:100%;margin:0;background:#071018;color:#e6f7ff;font-family:sans-serif;touch-action:none;}
-  canvas{image-rendering:pixelated;border:6px solid #111;background:#073;display:block;margin:20px auto;touch-action:none;}
-  #dialog{position:fixed;left:50%;transform:translateX(-50%);bottom:140px;max-width:94%;background:rgba(0,0,0,0.9);color:#fff;border:3px solid #333;padding:12px 14px;border-radius:10px;font-size:16px;display:none;transition:opacity 0.3s;}
+body{background:#ddeeff;margin:0;padding:0;font-family:sans-serif;overflow:hidden;}
+#game{display:block;margin:20px auto;border:4px solid #444;image-rendering:pixelated;}
+.bubble{
+  position:absolute;
+  background:white;
+  border:2px solid #333;
+  border-radius:10px;
+  padding:6px 10px;
+  font-size:14px;
+  max-width:140px;
+  line-height:1.3;
+}
+#msg{
+  position:absolute;
+  bottom:10px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,0.6);color:#fff;padding:8px 12px;border-radius:10px;
+  display:none;font-size:14px;
+}
 </style>
 </head>
 <body>
-<canvas id="game" width="480" height="384"></canvas>
-<div id="dialog"></div>
-<audio id="bgm" src="https://cdn.pixabay.com/download/audio/2022/03/09/audio_9d39a4f567.mp3?filename=peaceful-ambient-110624.mp3" loop autoplay></audio>
-
+<canvas id="game" width="240" height="240"></canvas>
+<div id="bubble" class="bubble" style="display:none;"></div>
+<div id="msg">宝箱を開けた！中には金色のコインが入っていた！</div>
 <script>
-const TILE=48, WORLD_W=20, WORLD_H=15;
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
-const bgm=document.getElementById("bgm");
+const bubble=document.getElementById("bubble");
+const msgBox=document.getElementById("msg");
 
-const world=[
- [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
- [1,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,3,3,0,1],
- [1,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,3,3,0,1],
- [1,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,1],
- [1,0,2,2,2,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1],
- [1,0,2,0,2,0,0,0,0,0,0,2,0,2,0,0,0,0,0,1],
- [1,0,2,2,2,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-];
-
-const player={x:10,y:7,px:10*TILE,py:7*TILE,dir:'down',moving:false,moveDir:null};
-const camera={x:0,y:0};
-const npcs=[
-  {x:8,y:7,px:8*TILE,py:7*TILE,dir:'down',range:2,dirH:1,text:["こんにちは、旅の人。","この先の森には不思議な光が見えるんだ。","気をつけて進むといいよ。"]},
-  {x:14,y:5,px:14*TILE,py:5*TILE,dir:'down',range:3,dirH:1,text:["おや、見かけない顔だね。","私はこの村の長老だ。","昔、ここに竜が眠っていたという。","…信じるかい？"]}
-];
-
-const dialog=document.getElementById("dialog");
-let activeNPC=null,dialogIndex=0,dialogVisible=false;
-let touchStartX=null,touchStartY=null,currentDir=null,isTouching=false;
-
-function isWalkable(x,y){
-  if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;
-  if(world[y][x]===1||world[y][x]===4)return false;
-  for(const npc of npcs){if(Math.round(npc.x)===x&&Math.round(npc.y)===y)return false;}
-  return true;
-}
-
-function movePlayer(dir){
-  if(player.moving)return;
-  let nx=player.x,ny=player.y;
-  if(dir==='up')ny--;if(dir==='down')ny++;if(dir==='left')nx--;if(dir==='right')nx++;
-  if(!isWalkable(nx,ny))return;
-  player.moving=true;player.dir=dir;
-  const sx=player.x*TILE,sy=player.y*TILE,tx=nx*TILE,ty=ny*TILE;
-  const start=performance.now(),duration=160;
-  function step(){
-    const t=Math.min((performance.now()-start)/duration,1);
-    player.px=sx+(tx-sx)*t;
-    player.py=sy+(ty-sy)*t;
-    if(t<1)requestAnimationFrame(step);
-    else{player.x=nx;player.y=ny;player.moving=false;}
+const tile=48;
+let keys={};
+let player={x:2,y:2,size:40,speed:2,vx:0,vy:0};
+let hasTreasure=false;
+let treasure={x:3,y:4,opened:false};
+let npcs=[
+  {
+    x:4,y:3,color:"orange",
+    msgNormal:[
+      "やあ旅人さん、この村へようこそ！",
+      "昔この村のどこかに宝箱が隠されたという話を聞いたことがあるよ。",
+      "誰も見つけたことがないけどね……"
+    ],
+    msgTreasure:[
+      "おお！その手に光るのは……まさか伝説のコイン！？",
+      "本当に見つけたんだね……村の希望が戻ってきたよ。ありがとう。"
+    ],
+    moveTimer:0, paused:false
+  },
+  {
+    x:1,y:5,color:"green",
+    msgNormal:[
+      "畑仕事はたいへんだよ、毎日土と汗の匂いだ。",
+      "でも、この村には豊かな実りと優しい人たちがいる。",
+      "だからこそ頑張れるんだ。"
+    ],
+    msgTreasure:[
+      "おや、それが噂の宝かい？",
+      "村長が喜ぶだろうねぇ。よく見つけたもんだ。"
+    ],
+    moveTimer:0, paused:false
   }
-  requestAnimationFrame(step);
+];
+
+let activeNpc=null;
+let msgIndex=0;
+let cancelLock=false; // 会話キャンセル後に再接近まで再会話禁止
+let lastTime=performance.now();
+
+// --- キー操作 ---
+window.addEventListener("keydown",e=>{keys[e.key]=true;});
+window.addEventListener("keyup",e=>{keys[e.key]=false;});
+
+// --- 会話操作 ---
+bubble.addEventListener("click",()=>{
+  if(!activeNpc)return;
+  msgIndex++;
+  const msgs = hasTreasure ? activeNpc.msgTreasure : activeNpc.msgNormal;
+  if(msgIndex>=msgs.length){
+    bubble.style.display="none";
+    activeNpc.paused=false;
+    activeNpc=null;
+    cancelLock=true;
+  }else{
+    bubble.textContent=msgs[msgIndex];
+  }
+});
+
+// 長押しキャンセル
+let touchTimer;
+bubble.addEventListener("touchstart",()=>{
+  touchTimer=setTimeout(()=>{
+    if(activeNpc){
+      bubble.style.display="none";
+      activeNpc.paused=false;
+      activeNpc=null;
+      cancelLock=true;
+    }
+  },700);
+});
+bubble.addEventListener("touchend",()=>clearTimeout(touchTimer));
+
+// --- 宝箱タップ ---
+canvas.addEventListener("click",(e)=>{
+  const rect=canvas.getBoundingClientRect();
+  const x=(e.clientX-rect.left)/tile;
+  const y=(e.clientY-rect.top)/tile;
+  if(Math.abs(player.x-treasure.x)<1 && Math.abs(player.y-treasure.y)<1 && !treasure.opened){
+    treasure.opened=true;
+    hasTreasure=true;
+    msgBox.style.display="block";
+    setTimeout(()=>msgBox.style.display="none",2500);
+  }
+});
+
+// --- NPC動作 ---
+function updateNPCs(dt){
+  npcs.forEach(n=>{
+    if(n.paused)return;
+    n.moveTimer+=dt;
+    if(n.moveTimer>5000){
+      n.moveTimer=0;
+      const dir=Math.floor(Math.random()*4);
+      const dx=[1,-1,0,0][dir];
+      const dy=[0,0,1,-1][dir];
+      const newX=n.x+dx, newY=n.y+dy;
+      if(newX>=0&&newX<5&&newY>=0&&newY<5) n.x=newX,n.y=newY;
+    }
+  });
 }
 
-function updateCamera(){
-  camera.x+=(player.px+TILE/2-480/2-camera.x)*0.2;
-  camera.y+=(player.py+TILE/2-384/2-camera.y)*0.2;
+// --- 当たり判定 ---
+function collide(ax,ay,bx,by){
+  return Math.abs(ax-bx)<0.8 && Math.abs(ay-by)<0.8;
 }
 
-/* === NPC巡回 === */
-function updateNPCs(){
-  for(const npc of npcs){
-    if(!npc.moving){
-      const nx=npc.x+npc.dirH;
-      if(!isWalkable(nx,npc.y)||Math.abs(nx-npc.x0)>npc.range){npc.dirH*=-1;}
-      npc.x+=npc.dirH*0.02;
-      npc.px=npc.x*TILE;
+// --- プレイヤー ---
+function updatePlayer(){
+  let speed=0.08;
+  player.vx=player.vy=0;
+  if(keys["ArrowUp"])player.vy=-speed;
+  if(keys["ArrowDown"])player.vy=speed;
+  if(keys["ArrowLeft"])player.vx=-speed;
+  if(keys["ArrowRight"])player.vx=speed;
+
+  let newX=player.x+player.vx;
+  let newY=player.y+player.vy;
+
+  for(const n of npcs){
+    if(collide(newX,newY,n.x,n.y))return;
+  }
+  player.x=newX;
+  player.y=newY;
+}
+
+// --- 会話判定 ---
+function checkTalk(){
+  if(activeNpc||cancelLock)return;
+  for(const n of npcs){
+    if(Math.abs(player.x-n.x)<1 && Math.abs(player.y-n.y)<1){
+      activeNpc=n;
+      n.paused=true;
+      msgIndex=0;
+      const msgs = hasTreasure ? n.msgTreasure : n.msgNormal;
+      bubble.textContent=msgs[0];
+      bubble.style.display="block";
+      const bx=n.x*tile+tile/2-bubble.offsetWidth/2+canvas.offsetLeft;
+      const by=n.y*tile-20+canvas.offsetTop;
+      bubble.style.left=bx+"px";
+      bubble.style.top=by+"px";
+      return;
     }
   }
+  // プレイヤーがどのNPCからも離れたらキャンセルロック解除
+  cancelLock=false;
 }
 
-/* === NPCとの距離チェック === */
-function checkNPCProximity(){
-  let near=null;
-  for(const npc of npcs){
-    const dx=Math.abs(npc.x-player.x);
-    const dy=Math.abs(npc.y-player.y);
-    if(dx<=1&&dy<=1){near=npc;break;}
-  }
-  if(near!==activeNPC){
-    if(near){dialogIndex=0;showDialog(near.text[0]);fadeOutBGM();}
-    else {hideDialog();fadeInBGM();}
-    activeNPC=near;
-  }
-}
-
-/* === 会話処理 === */
-function showDialog(text){
-  dialog.style.display="block";
-  dialog.textContent=text;
-  dialogVisible=true;
-}
-function hideDialog(){
-  dialog.style.display="none";
-  dialogVisible=false;
-}
-function nextDialog(){
-  if(!activeNPC)return;
-  dialogIndex++;
-  if(dialogIndex<activeNPC.text.length)showDialog(activeNPC.text[dialogIndex]);
-  else {hideDialog();fadeInBGM();}
-}
-
-/* === 長押しでキャンセル === */
-let holdTimer=null;
-dialog.addEventListener("touchstart",()=>{
-  holdTimer=setTimeout(()=>{
-    hideDialog();activeNPC=null;fadeInBGM();
-  },600);
-});
-dialog.addEventListener("touchend",()=>{
-  if(holdTimer){clearTimeout(holdTimer);holdTimer=null;}
-  else nextDialog();
-});
-
-/* === BGMフェード === */
-function fadeOutBGM(){
-  let v=bgm.volume;
-  const fade=setInterval(()=>{
-    v=Math.max(0,v-0.05);
-    bgm.volume=v;
-    if(v<=0)clearInterval(fade);
-  },80);
-}
-function fadeInBGM(){
-  let v=bgm.volume;
-  const fade=setInterval(()=>{
-    v=Math.min(1,v+0.05);
-    bgm.volume=v;
-    if(v>=1)clearInterval(fade);
-  },80);
-}
-
-/* === スワイプで移動 === */
-canvas.addEventListener("touchstart",e=>{
-  const t=e.touches[0];touchStartX=t.clientX;touchStartY=t.clientY;isTouching=true;
-});
-canvas.addEventListener("touchmove",e=>{
-  if(!isTouching)return;
-  const t=e.touches[0];
-  const dx=t.clientX-touchStartX,dy=t.clientY-touchStartY;
-  let dir=null;
-  if(Math.abs(dx)>Math.abs(dy)){
-    if(dx>20)dir='right';else if(dx<-20)dir='left';
-  }else{
-    if(dy>20)dir='down';else if(dy<-20)dir='up';
-  }
-  if(dir&&dir!==currentDir){currentDir=dir;movePlayer(dir);}
-});
-canvas.addEventListener("touchend",()=>{isTouching=false;currentDir=null;});
-
-/* === 描画 === */
-function render(){
+// --- 描画 ---
+function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  for(let y=0;y<WORLD_H;y++)for(let x=0;x<WORLD_W;x++){
-    const t=world[y][x];
-    ctx.fillStyle=t===1?'#2b4f2b':t===2?'#c9a36e':t===3?'#7aa8c2':t===4?'#2a9':'#3a8a3a';
-    ctx.fillRect(x*TILE-camera.x,y*TILE-camera.y,TILE,TILE);
-  }
-  for(const npc of npcs){
-    ctx.fillStyle="#ff5";
-    ctx.fillRect(npc.px-camera.x+4,npc.py-camera.y+4,TILE-8,TILE-8);
-  }
-  ctx.fillStyle="#66f";
-  ctx.fillRect(player.px-camera.x+6,player.py-camera.y+6,TILE-12,TILE-12);
+  ctx.fillStyle="#88cc88";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // 宝箱
+  ctx.fillStyle=treasure.opened?"#aa8844":"#ccaa00";
+  ctx.fillRect(treasure.x*tile+10,treasure.y*tile+10,tile-20,tile-20);
+
+  // NPC
+  npcs.forEach(n=>{
+    ctx.fillStyle=n.color;
+    ctx.fillRect(n.x*tile+4,n.y*tile+4,tile-8,tile-8);
+  });
+
+  // プレイヤー
+  ctx.fillStyle="blue";
+  ctx.beginPath();
+  ctx.arc(player.x*tile+tile/2,player.y*tile+tile/2,player.size/2/1.5,0,Math.PI*2);
+  ctx.fill();
 }
 
-function loop(){
-  updateCamera();
-  if(!player.moving&&isTouching&&currentDir)movePlayer(currentDir);
-  updateNPCs();
-  checkNPCProximity();
-  render();
+// --- メインループ ---
+function loop(now){
+  const dt=now-lastTime;lastTime=now;
+  updatePlayer();
+  updateNPCs(dt);
+  checkTalk();
+  draw();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
