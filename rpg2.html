@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>スマホドットRPG — 会話改良版</title>
+<title>スマホドットRPG — NPC修正版</title>
 <style>
   html,body{height:100%;margin:0;background:#071018;color:#e6f7ff;font-family:sans-serif;touch-action:none;}
   canvas{image-rendering:pixelated;border:6px solid #111;background:#073;display:block;margin:20px auto;touch-action:none;}
@@ -42,34 +42,17 @@ const world=[
 const player={x:10,y:7,px:10*TILE,py:7*TILE,dir:'down',moving:false,moveDir:null};
 const camera={x:0,y:0};
 
-// === NPC定義 ===
 const npcs=[
-  {
-    x:8,y:7,px:8*TILE,py:7*TILE,dir:'down',range:2,dirH:1,
-    text:[
-      "こんにちは、旅の人。ようこそこの小さな村へ。",
-      "この先の森には、夜になると青白い光が揺らめくんだ。",
-      "昔は『精霊の道』と呼ばれていて、迷った旅人を導いたらしい。",
-      "……でも最近は、誰もその光を見なくなってしまったんだ。"
-    ],
-    moving:true
-  },
-  {
-    x:14,y:5,px:14*TILE,py:5*TILE,dir:'down',range:3,dirH:1,
-    text:[
-      "おや、見かけない顔だね。私はこの村の長老だよ。",
-      "昔々、この大地の下には竜が眠っていたという。",
-      "その竜は、村人が争うときにだけ目を覚ますと伝えられている。",
-      "……人の心の静けさが、この村を守っているのかもしれんね。"
-    ],
-    moving:true
-  }
+  {x:8,y:7,px:8*TILE,py:7*TILE,x0:8,dir:'down',range:2,dirH:1,
+   text:["こんにちは、旅の人。","この先の森には不思議な光が見えるんだ。","気をつけて進むといいよ。","…そうそう、森の中では足元にも注意するんだ。"]},
+  {x:14,y:5,px:14*TILE,py:5*TILE,x0:14,dir:'down',range:3,dirH:1,
+   text:["おや、見かけない顔だね。","私はこの村の長老だ。","昔、ここに竜が眠っていたという。","……信じるかい？","この村にはまだ秘密が眠っているかもしれない。"]}
 ];
 
 const dialog=document.getElementById("dialog");
 let activeNPC=null,dialogIndex=0,dialogVisible=false;
-let cancelLock=false; // 🆕 キャンセル後は再接近まで会話禁止
 let touchStartX=null,touchStartY=null,currentDir=null,isTouching=false;
+let npcMoveTimer=0;
 
 function isWalkable(x,y){
   if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;
@@ -97,24 +80,33 @@ function movePlayer(dir){
   requestAnimationFrame(step);
 }
 
-/* === カメラ === */
+/* === カメラ追従 === */
 function updateCamera(){
   camera.x+=(player.px+TILE/2-480/2-camera.x)*0.2;
   camera.y+=(player.py+TILE/2-384/2-camera.y)*0.2;
 }
 
-/* === NPC巡回 === */
-function updateNPCs(){
-  for(const npc of npcs){
-    if(!npc.moving) continue; // 🆕 会話中は立ち止まる
-    const nx=npc.x+npc.dirH*0.02;
-    if(!isWalkable(Math.round(nx),Math.round(npc.y))){npc.dirH*=-1;continue;}
-    npc.x=nx;
-    npc.px=npc.x*TILE;
+/* === NPC移動 === */
+function updateNPCs(dt){
+  npcMoveTimer+=dt;
+  if(npcMoveTimer>=5000){ // 5秒ごと
+    npcMoveTimer=0;
+    for(const npc of npcs){
+      if(activeNPC===npc)continue; // 会話中は停止
+      const dir=Math.floor(Math.random()*4);
+      const dx=[1,-1,0,0][dir];
+      const dy=[0,0,1,-1][dir];
+      const nx=Math.round(npc.x)+dx;
+      const ny=Math.round(npc.y)+dy;
+      if(isWalkable(nx,ny)){
+        npc.x=nx;npc.y=ny;
+        npc.px=nx*TILE;npc.py=ny*TILE;
+      }
+    }
   }
 }
 
-/* === NPC距離チェック === */
+/* === NPCとの距離チェック === */
 function checkNPCProximity(){
   let near=null;
   for(const npc of npcs){
@@ -123,17 +115,8 @@ function checkNPCProximity(){
     if(dx<=1&&dy<=1){near=npc;break;}
   }
   if(near!==activeNPC){
-    if(near&&!cancelLock){ // 🆕 キャンセル後は近づいても会話しない
-      dialogIndex=0;
-      showDialog(near.text[0]);
-      fadeOutBGM();
-      near.moving=false; // 🆕 会話中は立ち止まる
-    }else if(!near){
-      hideDialog();
-      fadeInBGM();
-      if(activeNPC) activeNPC.moving=true; // 🆕 会話終了後は再び動く
-      cancelLock=false; // 再接近できるように解除
-    }
+    if(near){dialogIndex=0;showDialog(near.text[0]);fadeOutBGM();}
+    else {hideDialog();fadeInBGM();}
     activeNPC=near;
   }
 }
@@ -152,26 +135,22 @@ function nextDialog(){
   if(!activeNPC)return;
   dialogIndex++;
   if(dialogIndex<activeNPC.text.length)showDialog(activeNPC.text[dialogIndex]);
-  else {
-    hideDialog();fadeInBGM();
-    activeNPC.moving=true;
-  }
+  else {hideDialog();fadeInBGM();activeNPC=null;}
 }
 
-/* === 長押しでキャンセル === */
+/* === 長押しでキャンセル＆タップで次へ === */
 let holdTimer=null;
+let isHolding=false;
 dialog.addEventListener("touchstart",()=>{
+  isHolding=false;
   holdTimer=setTimeout(()=>{
-    hideDialog();
-    if(activeNPC){activeNPC.moving=true;}
-    activeNPC=null;
-    fadeInBGM();
-    cancelLock=true; // 🆕 再接近まで会話禁止
+    isHolding=true;
+    hideDialog();activeNPC=null;fadeInBGM();
   },600);
 });
 dialog.addEventListener("touchend",()=>{
-  if(holdTimer){clearTimeout(holdTimer);holdTimer=null;}
-  else nextDialog();
+  if(holdTimer){clearTimeout(holdTimer);}
+  if(!isHolding)nextDialog(); // 通常タップ時のみ次ページへ
 });
 
 /* === BGMフェード === */
@@ -192,10 +171,11 @@ function fadeInBGM(){
   },80);
 }
 
-/* === スワイプ移動 === */
+/* === スワイプ操作 === */
 canvas.addEventListener("touchstart",e=>{
   const t=e.touches[0];
-  touchStartX=t.clientX;touchStartY=t.clientY;isTouching=true;
+  touchStartX=t.clientX;touchStartY=t.clientY;
+  isTouching=true;
 });
 canvas.addEventListener("touchmove",e=>{
   if(!isTouching)return;
@@ -228,10 +208,12 @@ function render(){
 }
 
 /* === メインループ === */
-function loop(){
+let last=performance.now();
+function loop(now){
+  const dt=now-last;last=now;
   updateCamera();
   if(!player.moving&&isTouching&&currentDir)movePlayer(currentDir);
-  updateNPCs();
+  updateNPCs(dt);
   checkNPCProximity();
   render();
   requestAnimationFrame(loop);
