@@ -47,7 +47,28 @@ const TILE=48, WORLD_W=20, WORLD_H=15;
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
 
-const world=[
+// ==== BGM ====
+let audioCtx=null, bgmSource=null, bgmGain=null;
+function initBGM(){
+  if(audioCtx)return;
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  fetch("https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/beatbox-loop/techno.wav")
+    .then(res=>res.arrayBuffer())
+    .then(buf=>audioCtx.decodeAudioData(buf))
+    .then(audio=>{
+      bgmGain=audioCtx.createGain();
+      bgmGain.gain.value=0.5;
+      bgmSource=audioCtx.createBufferSource();
+      bgmSource.buffer=audio;
+      bgmSource.loop=true;
+      bgmSource.connect(bgmGain).connect(audioCtx.destination);
+      bgmSource.start(0);
+    });
+}
+canvas.addEventListener("touchstart",()=>{initBGM();},{once:true,passive:false});
+
+// === フィールド ===
+const world=[ /* 同じマップ */ 
  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
  [1,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,3,3,0,1],
  [1,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,3,3,0,1],
@@ -68,23 +89,17 @@ const world=[
 const player={x:10,y:7,px:10*TILE,py:7*TILE,dir:'down',moving:false,moveDir:null};
 const camera={x:0,y:0};
 
-// NPCと会話データ
+// === NPC ===
 const npcs=[
   {x:8,y:7,px:8*TILE,py:7*TILE,textBefore:[
-    "こんにちは、旅の人。",
-    "この先の森には不思議な光が見えるんだ。",
-    "気をつけて進むといいよ。"
+    "こんにちは、旅の人。","この先の森には不思議な光が見えるんだ。","気をつけて進むといいよ。"
   ],textAfter:[
-    "おお…『龍のうろこ』を手に入れたのか！",
-    "その力があれば、古の封印も解けるかもしれない。"
+    "おお…『龍のうろこ』を手に入れたのか！","その力があれば、古の封印も解けるかもしれない。"
   ]},
   {x:14,y:5,px:14*TILE,py:5*TILE,textBefore:[
-    "おや、見かけない顔だね。",
-    "私はこの村の長老だ。",
-    "昔、ここに竜が眠っていたという。"
+    "おや、見かけない顔だね。","私はこの村の長老だ。","昔、ここに竜が眠っていたという。"
   ],textAfter:[
-    "龍のうろこ…それは伝説の証。",
-    "君がそれを見つけたのなら、運命が動き出したのかもしれない。"
+    "龍のうろこ…それは伝説の証。","君がそれを見つけたのなら、運命が動き出したのかもしれない。"
   ]}
 ];
 
@@ -92,9 +107,7 @@ const dialog=document.getElementById("dialog");
 let activeNPC=null,dialogIndex=0,dialogVisible=false;
 let touchStartX=null,touchStartY=null,currentDir=null,isTouching=false;
 let npcMoveTimer=0;
-let hasDragonScale=false; // アイテム取得フラグ
-
-// 龍のうろこの位置
+let hasDragonScale=false;
 const item={x:12,y:9,collected:false};
 
 function isWalkable(x,y){
@@ -108,7 +121,7 @@ function isWalkable(x,y){
 
 /* === プレイヤー移動 === */
 function movePlayer(dir){
-  if(player.moving)return;
+  if(player.moving||dialogVisible)return;
   let nx=player.x,ny=player.y;
   if(dir==='up')ny--;if(dir==='down')ny++;if(dir==='left')nx--;if(dir==='right')nx++;
   if(!isWalkable(nx,ny))return;
@@ -125,7 +138,7 @@ function movePlayer(dir){
   requestAnimationFrame(step);
 }
 
-/* === カメラ追従 === */
+/* === カメラ === */
 function updateCamera(){
   camera.x+=(player.px+TILE/2-480/2-camera.x)*0.2;
   camera.y+=(player.py+TILE/2-384/2-camera.y)*0.2;
@@ -151,25 +164,24 @@ function updateNPCs(dt){
   }
 }
 
-/* === NPCとの距離チェック === */
+/* === NPC距離 === */
 function checkNPCProximity(){
-  let near=null;
+  if(dialogVisible)return;
   for(const npc of npcs){
     const dx=Math.abs(npc.x-player.x);
     const dy=Math.abs(npc.y-player.y);
-    if(dx<=1&&dy<=1){near=npc;break;}
-  }
-  if(near!==activeNPC){
-    if(near){
+    if(dx<=1&&dy<=1){
       dialogIndex=0;
       const textList=hasDragonScale?npc.textAfter:npc.textBefore;
       showDialog(textList[0]);
-    } else hideDialog();
-    activeNPC=near;
+      activeNPC=npc;
+      return;
+    }
   }
+  activeNPC=null;
 }
 
-/* === 会話 === */
+/* === ダイアログ === */
 function showDialog(text){
   dialog.style.display="block";
   dialog.textContent=text;
@@ -186,29 +198,18 @@ function nextDialog(){
   if(dialogIndex<textList.length)showDialog(textList[dialogIndex]);
   else {hideDialog();activeNPC=null;}
 }
+dialog.addEventListener("touchstart",e=>{
+  e.preventDefault();
+  nextDialog();
+},{passive:false});
 
-/* === ダイアログ操作 === */
-let holdTimer=null;
-let isHolding=false;
-dialog.addEventListener("touchstart",()=>{
-  isHolding=false;
-  holdTimer=setTimeout(()=>{
-    isHolding=true;
-    hideDialog();activeNPC=null;
-  },600);
-});
-dialog.addEventListener("touchend",()=>{
-  if(holdTimer)clearTimeout(holdTimer);
-  if(!isHolding)nextDialog();
-});
-
-/* === スワイプ移動 === */
+/* === スワイプ === */
 canvas.addEventListener("touchstart",e=>{
   e.preventDefault();
   const t=e.touches[0];
   touchStartX=t.clientX;touchStartY=t.clientY;
   isTouching=true;
-});
+},{passive:false});
 canvas.addEventListener("touchmove",e=>{
   e.preventDefault();
   if(!isTouching)return;
@@ -221,23 +222,22 @@ canvas.addEventListener("touchmove",e=>{
     if(dy>20)dir='down';else if(dy<-20)dir='up';
   }
   if(dir&&dir!==currentDir){currentDir=dir;movePlayer(dir);}
-});
+},{passive:false});
 canvas.addEventListener("touchend",e=>{
   e.preventDefault();
   isTouching=false;currentDir=null;
-});
+},{passive:false});
 
-/* === アイテム取得 === */
+/* === アイテム === */
 canvas.addEventListener("touchstart",e=>{
   const rect=canvas.getBoundingClientRect();
   const tx=Math.floor((e.touches[0].clientX-rect.left+camera.x)/TILE);
   const ty=Math.floor((e.touches[0].clientY-rect.top+camera.y)/TILE);
   if(!item.collected && tx===item.x && ty===item.y){
-    item.collected=true;
-    hasDragonScale=true;
+    item.collected=true;hasDragonScale=true;
     showDialog("『龍のうろこ』を手に入れた！");
   }
-});
+},{passive:false});
 
 /* === 描画 === */
 function render(){
@@ -247,24 +247,21 @@ function render(){
     ctx.fillStyle=t===1?'#2b4f2b':t===2?'#c9a36e':t===3?'#7aa8c2':t===4?'#2a9':'#3a8a3a';
     ctx.fillRect(x*TILE-camera.x,y*TILE-camera.y,TILE,TILE);
   }
-  // アイテム
   if(!item.collected){
     ctx.fillStyle="#0ff";
     ctx.beginPath();
     ctx.arc(item.x*TILE+TILE/2-camera.x,item.y*TILE+TILE/2-camera.y,10,0,Math.PI*2);
     ctx.fill();
   }
-  // NPC
   for(const npc of npcs){
     ctx.fillStyle="#ff5";
     ctx.fillRect(npc.px-camera.x+4,npc.py-camera.y+4,TILE-8,TILE-8);
   }
-  // プレイヤー
   ctx.fillStyle="#66f";
   ctx.fillRect(player.px-camera.x+6,player.py-camera.y+6,TILE-12,TILE-12);
 }
 
-/* === メインループ === */
+/* === ループ === */
 let last=performance.now();
 function loop(now){
   const dt=now-last;last=now;
