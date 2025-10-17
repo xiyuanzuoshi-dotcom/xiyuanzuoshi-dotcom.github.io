@@ -2,8 +2,9 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>スマホドットRPG — iOS対応版</title>
+<meta name="viewport"
+  content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>スマホドットRPG — 龍のうろこ編</title>
 <style>
   html,body{
     height:100%;margin:0;
@@ -40,13 +41,11 @@
 <body>
 <canvas id="game" width="480" height="384"></canvas>
 <div id="dialog"></div>
-<audio id="bgm" src="https://cdn.pixabay.com/download/audio/2022/03/09/audio_9d39a4f567.mp3?filename=peaceful-ambient-110624.mp3" loop></audio>
 
 <script>
 const TILE=48, WORLD_W=20, WORLD_H=15;
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
-const bgm=document.getElementById("bgm");
 
 const world=[
  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
@@ -69,19 +68,23 @@ const world=[
 const player={x:10,y:7,px:10*TILE,py:7*TILE,dir:'down',moving:false,moveDir:null};
 const camera={x:0,y:0};
 
+// NPCと会話データ
 const npcs=[
-  {x:8,y:7,px:8*TILE,py:7*TILE,text:[
+  {x:8,y:7,px:8*TILE,py:7*TILE,textBefore:[
     "こんにちは、旅の人。",
     "この先の森には不思議な光が見えるんだ。",
-    "気をつけて進むといいよ。",
-    "…そうそう、森の中では足元にも注意するんだ。"
+    "気をつけて進むといいよ。"
+  ],textAfter:[
+    "おお…『龍のうろこ』を手に入れたのか！",
+    "その力があれば、古の封印も解けるかもしれない。"
   ]},
-  {x:14,y:5,px:14*TILE,py:5*TILE,text:[
+  {x:14,y:5,px:14*TILE,py:5*TILE,textBefore:[
     "おや、見かけない顔だね。",
     "私はこの村の長老だ。",
-    "昔、ここに竜が眠っていたという。",
-    "……信じるかい？",
-    "この村にはまだ秘密が眠っているかもしれない。"
+    "昔、ここに竜が眠っていたという。"
+  ],textAfter:[
+    "龍のうろこ…それは伝説の証。",
+    "君がそれを見つけたのなら、運命が動き出したのかもしれない。"
   ]}
 ];
 
@@ -89,6 +92,10 @@ const dialog=document.getElementById("dialog");
 let activeNPC=null,dialogIndex=0,dialogVisible=false;
 let touchStartX=null,touchStartY=null,currentDir=null,isTouching=false;
 let npcMoveTimer=0;
+let hasDragonScale=false; // アイテム取得フラグ
+
+// 龍のうろこの位置
+const item={x:12,y:9,collected:false};
 
 function isWalkable(x,y){
   if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;
@@ -127,7 +134,7 @@ function updateCamera(){
 /* === NPC移動 === */
 function updateNPCs(dt){
   npcMoveTimer+=dt;
-  if(npcMoveTimer>=5000){ // 5秒ごと
+  if(npcMoveTimer>=5000){
     npcMoveTimer=0;
     for(const npc of npcs){
       if(activeNPC===npc)continue;
@@ -153,8 +160,11 @@ function checkNPCProximity(){
     if(dx<=1&&dy<=1){near=npc;break;}
   }
   if(near!==activeNPC){
-    if(near){dialogIndex=0;showDialog(near.text[0]);fadeOutBGM();}
-    else {hideDialog();fadeInBGM();}
+    if(near){
+      dialogIndex=0;
+      const textList=hasDragonScale?npc.textAfter:npc.textBefore;
+      showDialog(textList[0]);
+    } else hideDialog();
     activeNPC=near;
   }
 }
@@ -171,54 +181,28 @@ function hideDialog(){
 }
 function nextDialog(){
   if(!activeNPC)return;
+  const textList=hasDragonScale?activeNPC.textAfter:activeNPC.textBefore;
   dialogIndex++;
-  if(dialogIndex<activeNPC.text.length)showDialog(activeNPC.text[dialogIndex]);
-  else {hideDialog();fadeInBGM();activeNPC=null;}
+  if(dialogIndex<textList.length)showDialog(textList[dialogIndex]);
+  else {hideDialog();activeNPC=null;}
 }
 
-/* === 長押しでキャンセル === */
+/* === ダイアログ操作 === */
 let holdTimer=null;
 let isHolding=false;
 dialog.addEventListener("touchstart",()=>{
   isHolding=false;
   holdTimer=setTimeout(()=>{
     isHolding=true;
-    hideDialog();activeNPC=null;fadeInBGM();
+    hideDialog();activeNPC=null;
   },600);
 });
 dialog.addEventListener("touchend",()=>{
-  if(holdTimer){clearTimeout(holdTimer);}
+  if(holdTimer)clearTimeout(holdTimer);
   if(!isHolding)nextDialog();
 });
 
-/* === BGMフェード === */
-function fadeOutBGM(){
-  let v=bgm.volume;
-  const fade=setInterval(()=>{
-    v=Math.max(0,v-0.05);
-    bgm.volume=v;
-    if(v<=0)clearInterval(fade);
-  },80);
-}
-function fadeInBGM(){
-  let v=bgm.volume;
-  const fade=setInterval(()=>{
-    v=Math.min(1,v+0.05);
-    bgm.volume=v;
-    if(v>=1)clearInterval(fade);
-  },80);
-}
-
-/* === iOS Safari初回タップでBGM許可 === */
-let bgmStarted=false;
-document.body.addEventListener("touchstart",()=>{
-  if(!bgmStarted){
-    bgm.play().catch(()=>{}); // ユーザー操作後に再生
-    bgmStarted=true;
-  }
-},{once:true});
-
-/* === スワイプ操作 === */
+/* === スワイプ移動 === */
 canvas.addEventListener("touchstart",e=>{
   e.preventDefault();
   const t=e.touches[0];
@@ -243,6 +227,18 @@ canvas.addEventListener("touchend",e=>{
   isTouching=false;currentDir=null;
 });
 
+/* === アイテム取得 === */
+canvas.addEventListener("touchstart",e=>{
+  const rect=canvas.getBoundingClientRect();
+  const tx=Math.floor((e.touches[0].clientX-rect.left+camera.x)/TILE);
+  const ty=Math.floor((e.touches[0].clientY-rect.top+camera.y)/TILE);
+  if(!item.collected && tx===item.x && ty===item.y){
+    item.collected=true;
+    hasDragonScale=true;
+    showDialog("『龍のうろこ』を手に入れた！");
+  }
+});
+
 /* === 描画 === */
 function render(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -251,10 +247,19 @@ function render(){
     ctx.fillStyle=t===1?'#2b4f2b':t===2?'#c9a36e':t===3?'#7aa8c2':t===4?'#2a9':'#3a8a3a';
     ctx.fillRect(x*TILE-camera.x,y*TILE-camera.y,TILE,TILE);
   }
+  // アイテム
+  if(!item.collected){
+    ctx.fillStyle="#0ff";
+    ctx.beginPath();
+    ctx.arc(item.x*TILE+TILE/2-camera.x,item.y*TILE+TILE/2-camera.y,10,0,Math.PI*2);
+    ctx.fill();
+  }
+  // NPC
   for(const npc of npcs){
     ctx.fillStyle="#ff5";
     ctx.fillRect(npc.px-camera.x+4,npc.py-camera.y+4,TILE-8,TILE-8);
   }
+  // プレイヤー
   ctx.fillStyle="#66f";
   ctx.fillRect(player.px-camera.x+6,player.py-camera.y+6,TILE-12,TILE-12);
 }

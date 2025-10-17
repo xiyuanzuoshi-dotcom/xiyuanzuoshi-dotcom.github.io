@@ -1,47 +1,54 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>スマホドットRPG — スワイプ操作版（改良）</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>スマホドットRPG — iOS対応版</title>
 <style>
-  html,body{height:100%;margin:0;background:#071018;color:#e6f7ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Kaku Gothic ProN',Meiryo,sans-serif;touch-action:none;}
-  #wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px}
-  canvas{image-rendering:pixelated;border:6px solid #111;background:#073;display:block;touch-action:none;}
-  .controls{position:relative;width:100%;max-width:520px;height:100px;margin-top:8px;}
-  .actions{position:absolute;right:8px;bottom:6px;display:flex;flex-direction:column;gap:12px;}
-  .btn{width:72px;height:72px;border-radius:14px;background:#c33;border:3px solid #700;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 6px 0 rgba(0,0,0,0.6);}
-  .btn.b{background:#444;border:3px solid #222;}
-  #dialog{position:fixed;left:50%;transform:translateX(-50%);bottom:170px;max-width:94%;background:rgba(0,0,0,0.9);color:#fff;border:3px solid #333;padding:10px;border-radius:10px;font-size:16px;display:none;}
-  .help{font-size:13px;color:#9fd;text-align:center;}
-  @media(min-width:760px){canvas{width:760px;height:auto;}}
+  html,body{
+    height:100%;margin:0;
+    background:#071018;color:#e6f7ff;
+    font-family:sans-serif;
+    touch-action:none;
+    overscroll-behavior:none;
+  }
+  canvas{
+    image-rendering:pixelated;
+    border:6px solid #111;
+    background:#073;
+    display:block;
+    margin:20px auto;
+    touch-action:none;
+  }
+  #dialog{
+    position:fixed;
+    left:50%;
+    transform:translateX(-50%);
+    bottom:140px;
+    max-width:94%;
+    background:rgba(0,0,0,0.9);
+    color:#fff;
+    border:3px solid #333;
+    padding:12px 14px;
+    border-radius:10px;
+    font-size:16px;
+    display:none;
+    transition:opacity 0.3s;
+  }
 </style>
 </head>
 <body>
-<div id="wrap">
-  <h3>スマホドットRPG — スワイプ操作版（改良）</h3>
-  <canvas id="game" width="480" height="384"></canvas>
-  <div class="help">スワイプで移動 / 指を離すまで動き続ける / A: 話す / B: キャンセル</div>
-  <div class="controls">
-    <div class="actions">
-      <div class="btn a" id="btnA">A</div>
-      <div class="btn b" id="btnB">B</div>
-    </div>
-  </div>
-</div>
-
-<div id="dialog"><p id="dialog-text"></p></div>
+<canvas id="game" width="480" height="384"></canvas>
+<div id="dialog"></div>
+<audio id="bgm" src="https://cdn.pixabay.com/download/audio/2022/03/09/audio_9d39a4f567.mp3?filename=peaceful-ambient-110624.mp3" loop></audio>
 
 <script>
-/* === ゲーム設定 === */
-const TILE=48;
-const WORLD_W=20, WORLD_H=15;
-const VIEW_W=10, VIEW_H=8;
-const VIEW_PX_W=VIEW_W*TILE, VIEW_PX_H=VIEW_H*TILE;
+const TILE=48, WORLD_W=20, WORLD_H=15;
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
+const bgm=document.getElementById("bgm");
 
-const world=[ /* 同じマップ省略 */ 
+const world=[
  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
  [1,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,3,3,0,1],
  [1,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,3,3,0,1],
@@ -58,115 +65,212 @@ const world=[ /* 同じマップ省略 */
  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
-const entrance={x:19,y:7};
-const player={x:10,y:7,dir:"down",moving:false,px:10*TILE,py:7*TILE,speed:180};
-const camera={x:0,y:0,targetX:0,targetY:0};
 
-/* === 会話UI === */
-const dialogEl=document.getElementById('dialog');
-const dialogText=document.getElementById('dialog-text');
-let dialogQueue=[];
-function showDialog(lines){dialogQueue=lines.slice();dialogEl.style.display='block';dialogText.textContent=dialogQueue.shift()||'';}
-function nextDialog(){if(dialogQueue.length>0)dialogText.textContent=dialogQueue.shift();else dialogEl.style.display='none';}
-function isWalkable(x,y){if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;const t=world[y][x];return t!==1&&t!==4;}
+const player={x:10,y:7,px:10*TILE,py:7*TILE,dir:'down',moving:false,moveDir:null};
+const camera={x:0,y:0};
 
-/* === スムーズ移動 === */
-function attemptMove(dir){
-  if(player.moving||dialogEl.style.display==='block')return false;
-  let nx=player.x,ny=player.y;
-  if(dir==='up')ny--;if(dir==='down')ny++;if(dir==='left')nx--;if(dir==='right')nx++;
-  if(nx===entrance.x&&ny===entrance.y){window.location.href='forest.html';return;}
-  if(!isWalkable(nx,ny))return false;
+const npcs=[
+  {x:8,y:7,px:8*TILE,py:7*TILE,text:[
+    "こんにちは、旅の人。",
+    "この先の森には不思議な光が見えるんだ。",
+    "気をつけて進むといいよ。",
+    "…そうそう、森の中では足元にも注意するんだ。"
+  ]},
+  {x:14,y:5,px:14*TILE,py:5*TILE,text:[
+    "おや、見かけない顔だね。",
+    "私はこの村の長老だ。",
+    "昔、ここに竜が眠っていたという。",
+    "……信じるかい？",
+    "この村にはまだ秘密が眠っているかもしれない。"
+  ]}
+];
 
-  player.moving=true;
-  player.dir=dir;
-  const startX=player.x*TILE, startY=player.y*TILE;
-  const targetX=nx*TILE, targetY=ny*TILE;
-  const startTime=performance.now();
-  const duration=player.speed;
+const dialog=document.getElementById("dialog");
+let activeNPC=null,dialogIndex=0,dialogVisible=false;
+let touchStartX=null,touchStartY=null,currentDir=null,isTouching=false;
+let npcMoveTimer=0;
 
-  function step(){
-    const t=Math.min(1,(performance.now()-startTime)/duration);
-    // ease-in-out 補間
-    const ease=t<0.5?2*t*t:-1+(4-2*t)*t;
-    player.px=startX+(targetX-startX)*ease;
-    player.py=startY+(targetY-startY)*ease;
-    if(t<1){requestAnimationFrame(step);}
-    else{
-      player.x=nx;player.y=ny;
-      player.px=targetX;player.py=targetY;
-      player.moving=false;
-    }
+function isWalkable(x,y){
+  if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;
+  if(world[y][x]===1||world[y][x]===4)return false;
+  for(const npc of npcs){
+    if(Math.round(npc.x)===x&&Math.round(npc.y)===y)return false;
   }
-  requestAnimationFrame(step);
   return true;
 }
 
-/* === A/Bボタン === */
-function pressA(){if(dialogEl.style.display==='block'){nextDialog();return;}showDialog(['誰もいない…']);}
-function pressB(){dialogEl.style.display='none';dialogQueue=[];}
-
-/* === カメラと描画 === */
-function updateCameraTarget(){
-  let tx=player.px+TILE/2-VIEW_PX_W/2;
-  let ty=player.py+TILE/2-VIEW_PX_H/2;
-  tx=Math.max(0,Math.min(tx,WORLD_W*TILE-VIEW_PX_W));
-  ty=Math.max(0,Math.min(ty,WORLD_H*TILE-VIEW_PX_H));
-  camera.targetX=tx;camera.targetY=ty;
+/* === プレイヤー移動 === */
+function movePlayer(dir){
+  if(player.moving)return;
+  let nx=player.x,ny=player.y;
+  if(dir==='up')ny--;if(dir==='down')ny++;if(dir==='left')nx--;if(dir==='right')nx++;
+  if(!isWalkable(nx,ny))return;
+  player.moving=true;player.dir=dir;
+  const sx=player.x*TILE,sy=player.y*TILE,tx=nx*TILE,ty=ny*TILE;
+  const start=performance.now(),duration=160;
+  function step(){
+    const t=Math.min((performance.now()-start)/duration,1);
+    player.px=sx+(tx-sx)*t;
+    player.py=sy+(ty-sy)*t;
+    if(t<1)requestAnimationFrame(step);
+    else{player.x=nx;player.y=ny;player.moving=false;}
+  }
+  requestAnimationFrame(step);
 }
+
+/* === カメラ追従 === */
+function updateCamera(){
+  camera.x+=(player.px+TILE/2-480/2-camera.x)*0.2;
+  camera.y+=(player.py+TILE/2-384/2-camera.y)*0.2;
+}
+
+/* === NPC移動 === */
+function updateNPCs(dt){
+  npcMoveTimer+=dt;
+  if(npcMoveTimer>=5000){ // 5秒ごと
+    npcMoveTimer=0;
+    for(const npc of npcs){
+      if(activeNPC===npc)continue;
+      const dir=Math.floor(Math.random()*4);
+      const dx=[1,-1,0,0][dir];
+      const dy=[0,0,1,-1][dir];
+      const nx=Math.round(npc.x)+dx;
+      const ny=Math.round(npc.y)+dy;
+      if(isWalkable(nx,ny)){
+        npc.x=nx;npc.y=ny;
+        npc.px=nx*TILE;npc.py=ny*TILE;
+      }
+    }
+  }
+}
+
+/* === NPCとの距離チェック === */
+function checkNPCProximity(){
+  let near=null;
+  for(const npc of npcs){
+    const dx=Math.abs(npc.x-player.x);
+    const dy=Math.abs(npc.y-player.y);
+    if(dx<=1&&dy<=1){near=npc;break;}
+  }
+  if(near!==activeNPC){
+    if(near){dialogIndex=0;showDialog(near.text[0]);fadeOutBGM();}
+    else {hideDialog();fadeInBGM();}
+    activeNPC=near;
+  }
+}
+
+/* === 会話 === */
+function showDialog(text){
+  dialog.style.display="block";
+  dialog.textContent=text;
+  dialogVisible=true;
+}
+function hideDialog(){
+  dialog.style.display="none";
+  dialogVisible=false;
+}
+function nextDialog(){
+  if(!activeNPC)return;
+  dialogIndex++;
+  if(dialogIndex<activeNPC.text.length)showDialog(activeNPC.text[dialogIndex]);
+  else {hideDialog();fadeInBGM();activeNPC=null;}
+}
+
+/* === 長押しでキャンセル === */
+let holdTimer=null;
+let isHolding=false;
+dialog.addEventListener("touchstart",()=>{
+  isHolding=false;
+  holdTimer=setTimeout(()=>{
+    isHolding=true;
+    hideDialog();activeNPC=null;fadeInBGM();
+  },600);
+});
+dialog.addEventListener("touchend",()=>{
+  if(holdTimer){clearTimeout(holdTimer);}
+  if(!isHolding)nextDialog();
+});
+
+/* === BGMフェード === */
+function fadeOutBGM(){
+  let v=bgm.volume;
+  const fade=setInterval(()=>{
+    v=Math.max(0,v-0.05);
+    bgm.volume=v;
+    if(v<=0)clearInterval(fade);
+  },80);
+}
+function fadeInBGM(){
+  let v=bgm.volume;
+  const fade=setInterval(()=>{
+    v=Math.min(1,v+0.05);
+    bgm.volume=v;
+    if(v>=1)clearInterval(fade);
+  },80);
+}
+
+/* === iOS Safari初回タップでBGM許可 === */
+let bgmStarted=false;
+document.body.addEventListener("touchstart",()=>{
+  if(!bgmStarted){
+    bgm.play().catch(()=>{}); // ユーザー操作後に再生
+    bgmStarted=true;
+  }
+},{once:true});
+
+/* === スワイプ操作 === */
+canvas.addEventListener("touchstart",e=>{
+  e.preventDefault();
+  const t=e.touches[0];
+  touchStartX=t.clientX;touchStartY=t.clientY;
+  isTouching=true;
+});
+canvas.addEventListener("touchmove",e=>{
+  e.preventDefault();
+  if(!isTouching)return;
+  const t=e.touches[0];
+  const dx=t.clientX-touchStartX,dy=t.clientY-touchStartY;
+  let dir=null;
+  if(Math.abs(dx)>Math.abs(dy)){
+    if(dx>20)dir='right';else if(dx<-20)dir='left';
+  }else{
+    if(dy>20)dir='down';else if(dy<-20)dir='up';
+  }
+  if(dir&&dir!==currentDir){currentDir=dir;movePlayer(dir);}
+});
+canvas.addEventListener("touchend",e=>{
+  e.preventDefault();
+  isTouching=false;currentDir=null;
+});
+
+/* === 描画 === */
 function render(){
-  camera.x+=(camera.targetX-camera.x)*0.2;
-  camera.y+=(camera.targetY-camera.y)*0.2;
   ctx.clearRect(0,0,canvas.width,canvas.height);
   for(let y=0;y<WORLD_H;y++)for(let x=0;x<WORLD_W;x++){
     const t=world[y][x];
     ctx.fillStyle=t===1?'#2b4f2b':t===2?'#c9a36e':t===3?'#7aa8c2':t===4?'#2a9':'#3a8a3a';
     ctx.fillRect(x*TILE-camera.x,y*TILE-camera.y,TILE,TILE);
   }
-  ctx.fillStyle='#66f';
-  ctx.fillRect(player.px-camera.x+4,player.py-camera.y+4,TILE-8,TILE-8);
+  for(const npc of npcs){
+    ctx.fillStyle="#ff5";
+    ctx.fillRect(npc.px-camera.x+4,npc.py-camera.y+4,TILE-8,TILE-8);
+  }
+  ctx.fillStyle="#66f";
+  ctx.fillRect(player.px-camera.x+6,player.py-camera.y+6,TILE-12,TILE-12);
 }
 
-/* === ゲームループ === */
-let moveDir=null, touchActive=false;
-function gameLoop(){
-  updateCameraTarget();
+/* === メインループ === */
+let last=performance.now();
+function loop(now){
+  const dt=now-last;last=now;
+  updateCamera();
+  if(!player.moving&&isTouching&&currentDir)movePlayer(currentDir);
+  updateNPCs(dt);
+  checkNPCProximity();
   render();
-
-  // 押しっぱなし移動継続
-  if(touchActive && !player.moving && moveDir){
-    attemptMove(moveDir);
-  }
-  requestAnimationFrame(gameLoop);
+  requestAnimationFrame(loop);
 }
-requestAnimationFrame(gameLoop);
-
-/* === スワイプ操作（押しっぱなし対応） === */
-let startX=null, startY=null;
-canvas.addEventListener('touchstart',e=>{
-  const t=e.touches[0];
-  startX=t.clientX; startY=t.clientY;
-  touchActive=true;
-});
-canvas.addEventListener('touchmove',e=>{
-  if(!startX||!startY)return;
-  const t=e.touches[0];
-  const dx=t.clientX-startX, dy=t.clientY-startY;
-  const absX=Math.abs(dx), absY=Math.abs(dy);
-  const dir = absX>absY ? (dx>0?'right':'left') : (dy>0?'down':'up');
-  if(dir!==moveDir){
-    moveDir=dir; // 方向転換で即再移動
-  }
-});
-canvas.addEventListener('touchend',()=>{
-  startX=startY=null;
-  touchActive=false;
-  moveDir=null;
-});
-
-/* === A/Bボタン === */
-document.getElementById('btnA').addEventListener('touchstart',()=>pressA());
-document.getElementById('btnB').addEventListener('touchstart',()=>pressB());
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
