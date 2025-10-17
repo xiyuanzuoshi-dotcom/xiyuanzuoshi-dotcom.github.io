@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>スマホドットRPG — iOS対応版</title>
+<title>スマホドットRPG — アイテム取得でセリフ変化</title>
 <style>
   html,body{
     height:100%;margin:0;
@@ -83,6 +83,9 @@ const npcs=[
   ]}
 ];
 
+// === アイテム ===
+let item = {x:11, y:7, collected:false, name:"光る石"};
+
 const dialog=document.getElementById("dialog");
 let activeNPC=null,dialogIndex=0,dialogVisible=false;
 let touchStartX=null,touchStartY=null,currentDir=null,isTouching=false;
@@ -111,9 +114,27 @@ function movePlayer(dir){
     player.px=sx+(tx-sx)*t;
     player.py=sy+(ty-sy)*t;
     if(t<1)requestAnimationFrame(step);
-    else{player.x=nx;player.y=ny;player.moving=false;}
+    else{
+      player.x=nx;player.y=ny;player.moving=false;
+      checkItemPickup();
+    }
   }
   requestAnimationFrame(step);
+}
+
+/* === アイテム取得判定 === */
+function checkItemPickup(){
+  if(!item.collected && player.x===item.x && player.y===item.y){
+    item.collected=true;
+    showDialog(`「${item.name}」を手に入れた！`);
+    // NPCのセリフを変更
+    npcs[1].text=[
+      "おお…それはまさか、伝説の光る石ではないか！",
+      "よくぞ見つけてくれた、旅の者よ。",
+      "この村にも再び光が戻るだろう。ありがとう。"
+    ];
+    setTimeout(hideDialog,2000);
+  }
 }
 
 /* === カメラ追従 === */
@@ -222,10 +243,19 @@ function render(){
     ctx.fillStyle=t===1?'#2b4f2b':t===2?'#c9a36e':t===3?'#7aa8c2':t===4?'#2a9':'#3a8a3a';
     ctx.fillRect(x*TILE-camera.x,y*TILE-camera.y,TILE,TILE);
   }
+  // === アイテム描画 ===
+  if(!item.collected){
+    ctx.fillStyle="#0ff";
+    ctx.beginPath();
+    ctx.arc(item.x*TILE+TILE/2-camera.x, item.y*TILE+TILE/2-camera.y, 10, 0, Math.PI*2);
+    ctx.fill();
+  }
+  // === NPC描画 ===
   for(const npc of npcs){
     ctx.fillStyle="#ff5";
     ctx.fillRect(npc.px-camera.x+4,npc.py-camera.y+4,TILE-8,TILE-8);
   }
+  // === プレイヤー描画 ===
   ctx.fillStyle="#66f";
   ctx.fillRect(player.px-camera.x+6,player.py-camera.y+6,TILE-12,TILE-12);
 }
