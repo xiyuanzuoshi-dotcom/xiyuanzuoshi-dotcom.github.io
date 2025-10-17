@@ -3,42 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>スマホドットRPG — NPC会話＋当たり判定</title>
+<title>スマホドットRPG — NPC巡回＋BGMフェード版</title>
 <style>
-html,body{height:100%;margin:0;background:#071018;color:#e6f7ff;font-family:sans-serif;touch-action:none;}
-#wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px}
-canvas{image-rendering:pixelated;border:6px solid #111;background:#073;display:block;}
-.npc-dialog{
-  position:absolute;
-  background:rgba(0,0,0,0.85);
-  color:#fff;
-  border:2px solid #ccc;
-  border-radius:10px;
-  padding:6px 10px;
-  font-size:14px;
-  line-height:1.4;
-  max-width:180px;
-  display:none;
-  transform:translate(-50%,-100%);
-  user-select:none;
-}
+  html,body{height:100%;margin:0;background:#071018;color:#e6f7ff;font-family:sans-serif;touch-action:none;}
+  canvas{image-rendering:pixelated;border:6px solid #111;background:#073;display:block;margin:20px auto;touch-action:none;}
+  #dialog{position:fixed;left:50%;transform:translateX(-50%);bottom:140px;max-width:94%;background:rgba(0,0,0,0.9);color:#fff;border:3px solid #333;padding:12px 14px;border-radius:10px;font-size:16px;display:none;transition:opacity 0.3s;}
 </style>
 </head>
 <body>
-<div id="wrap">
-  <h3>スマホドットRPG — NPC会話＋当たり判定</h3>
-  <div style="position:relative;">
-    <canvas id="game" width="480" height="384"></canvas>
-    <div id="npcDialog" class="npc-dialog"></div>
-  </div>
-</div>
+<canvas id="game" width="480" height="384"></canvas>
+<div id="dialog"></div>
+<audio id="bgm" src="https://cdn.pixabay.com/download/audio/2022/03/09/audio_9d39a4f567.mp3?filename=peaceful-ambient-110624.mp3" loop autoplay></audio>
 
 <script>
-/* === 基本設定 === */
 const TILE=48, WORLD_W=20, WORLD_H=15;
-const canvas=document.getElementById('game');
-const ctx=canvas.getContext('2d');
-const dialogEl=document.getElementById('npcDialog');
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+const bgm=document.getElementById("bgm");
 
 const world=[
  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
@@ -58,179 +39,164 @@ const world=[
  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-const player={x:10,y:7,dir:'down',moving:false,px:10*TILE,py:7*TILE};
-const camera={x:0,y:0,targetX:0,targetY:0};
-const NPCS=[
-  {
-    x:8,y:6,color:'#ff4444',
-    dialog:[
-      'ようこそ、この村へ！',
-      'この先にある森には古い祠があるんだ。',
-      '誰も近づかないけど、夜になると灯りが見えるって噂だよ。',
-      '…君、本当に行くつもりなのかい？'
-    ]
-  },
-  {
-    x:15,y:9,color:'#ffaa00',
-    dialog:[
-      'やあ、旅人さん！',
-      'この村は昔、湖の底に沈みかけたことがあるんだ。',
-      'けど、不思議な力が働いて助かったらしい。',
-      '今でも湖のほとりでは、青白い光が時々見えるそうだよ。'
-    ]
-  },
-  {
-    x:5,y:11,color:'#44aaff',
-    dialog:[
-      '……眠い。',
-      '昨日は遅くまで井戸の修理をしてたんだ。',
-      'まったく、あの子猫が落ちるからって言うけど…',
-      'あぁもう、寝かせてくれ…。'
-    ]
-  }
+const player={x:10,y:7,px:10*TILE,py:7*TILE,dir:'down',moving:false,moveDir:null};
+const camera={x:0,y:0};
+const npcs=[
+  {x:8,y:7,px:8*TILE,py:7*TILE,dir:'down',range:2,dirH:1,text:["こんにちは、旅の人。","この先の森には不思議な光が見えるんだ。","気をつけて進むといいよ。"]},
+  {x:14,y:5,px:14*TILE,py:5*TILE,dir:'down',range:3,dirH:1,text:["おや、見かけない顔だね。","私はこの村の長老だ。","昔、ここに竜が眠っていたという。","…信じるかい？"]}
 ];
 
-let activeNPC=null;
-let messageIndex=0;
-let cancelHold=false;
-let holdTimer=null;
+const dialog=document.getElementById("dialog");
+let activeNPC=null,dialogIndex=0,dialogVisible=false;
+let touchStartX=null,touchStartY=null,currentDir=null,isTouching=false;
 
-/* === 当たり判定 === */
 function isWalkable(x,y){
   if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;
-  const t=world[y][x];
-  if(t===1||t===4)return false;
-  for(const npc of NPCS){ if(npc.x===x && npc.y===y) return false; }
+  if(world[y][x]===1||world[y][x]===4)return false;
+  for(const npc of npcs){if(Math.round(npc.x)===x&&Math.round(npc.y)===y)return false;}
   return true;
 }
 
-/* === プレイヤー移動 === */
-function attemptMove(dir){
+function movePlayer(dir){
   if(player.moving)return;
   let nx=player.x,ny=player.y;
   if(dir==='up')ny--;if(dir==='down')ny++;if(dir==='left')nx--;if(dir==='right')nx++;
   if(!isWalkable(nx,ny))return;
   player.moving=true;player.dir=dir;
-  const startX=player.x*TILE,startY=player.y*TILE,targetX=nx*TILE,targetY=ny*TILE;
-  const duration=120,startTime=performance.now();
+  const sx=player.x*TILE,sy=player.y*TILE,tx=nx*TILE,ty=ny*TILE;
+  const start=performance.now(),duration=160;
   function step(){
-    const t=(performance.now()-startTime)/duration;
-    if(t>=1){player.px=targetX;player.py=targetY;player.x=nx;player.y=ny;player.moving=false;}
-    else{player.px=startX+(targetX-startX)*t;player.py=startY+(targetY-startY)*t;requestAnimationFrame(step);}
-  }requestAnimationFrame(step);
+    const t=Math.min((performance.now()-start)/duration,1);
+    player.px=sx+(tx-sx)*t;
+    player.py=sy+(ty-sy)*t;
+    if(t<1)requestAnimationFrame(step);
+    else{player.x=nx;player.y=ny;player.moving=false;}
+  }
+  requestAnimationFrame(step);
 }
 
-/* === カメラ追従 === */
-function updateCameraTarget(){
-  let tx=player.px+TILE/2-480/2;
-  let ty=player.py+TILE/2-384/2;
-  tx=Math.max(0,Math.min(tx,WORLD_W*TILE-480));
-  ty=Math.max(0,Math.min(ty,WORLD_H*TILE-384));
-  camera.targetX=tx;camera.targetY=ty;
+function updateCamera(){
+  camera.x+=(player.px+TILE/2-480/2-camera.x)*0.2;
+  camera.y+=(player.py+TILE/2-384/2-camera.y)*0.2;
 }
 
-/* === NPC距離チェック === */
-function checkNPCProximity(){
-  activeNPC=null;
-  for(const npc of NPCS){
-    const dx=Math.abs(player.x-npc.x);
-    const dy=Math.abs(player.y-npc.y);
-    if(dx<=1 && dy<=1){
-      activeNPC=npc;
-      break;
+/* === NPC巡回 === */
+function updateNPCs(){
+  for(const npc of npcs){
+    if(!npc.moving){
+      const nx=npc.x+npc.dirH;
+      if(!isWalkable(nx,npc.y)||Math.abs(nx-npc.x0)>npc.range){npc.dirH*=-1;}
+      npc.x+=npc.dirH*0.02;
+      npc.px=npc.x*TILE;
     }
   }
-  if(activeNPC){
-    showNPCDialog(activeNPC);
-  }else{
-    dialogEl.style.display='none';
-    messageIndex=0;
+}
+
+/* === NPCとの距離チェック === */
+function checkNPCProximity(){
+  let near=null;
+  for(const npc of npcs){
+    const dx=Math.abs(npc.x-player.x);
+    const dy=Math.abs(npc.y-player.y);
+    if(dx<=1&&dy<=1){near=npc;break;}
+  }
+  if(near!==activeNPC){
+    if(near){dialogIndex=0;showDialog(near.text[0]);fadeOutBGM();}
+    else {hideDialog();fadeInBGM();}
+    activeNPC=near;
   }
 }
 
-/* === 吹き出し === */
-function showNPCDialog(npc){
-  const lines=npc.dialog;
-  dialogEl.textContent=lines[messageIndex];
-  const screenX=(npc.x*TILE-camera.x)+TILE/2;
-  const screenY=(npc.y*TILE-camera.y)-10;
-  dialogEl.style.left=screenX+'px';
-  dialogEl.style.top=screenY+'px';
-  dialogEl.style.display='block';
+/* === 会話処理 === */
+function showDialog(text){
+  dialog.style.display="block";
+  dialog.textContent=text;
+  dialogVisible=true;
+}
+function hideDialog(){
+  dialog.style.display="none";
+  dialogVisible=false;
+}
+function nextDialog(){
+  if(!activeNPC)return;
+  dialogIndex++;
+  if(dialogIndex<activeNPC.text.length)showDialog(activeNPC.text[dialogIndex]);
+  else {hideDialog();fadeInBGM();}
 }
 
-/* === 吹き出し操作 === */
-dialogEl.addEventListener('touchstart',()=>{
-  if(!activeNPC)return;
-  cancelHold=false;
+/* === 長押しでキャンセル === */
+let holdTimer=null;
+dialog.addEventListener("touchstart",()=>{
   holdTimer=setTimeout(()=>{
-    cancelHold=true;
-    dialogEl.style.display='none';
-    messageIndex=0;
-  },700); // 長押しでキャンセル
+    hideDialog();activeNPC=null;fadeInBGM();
+  },600);
+});
+dialog.addEventListener("touchend",()=>{
+  if(holdTimer){clearTimeout(holdTimer);holdTimer=null;}
+  else nextDialog();
 });
 
-dialogEl.addEventListener('touchend',()=>{
-  clearTimeout(holdTimer);
-  if(cancelHold)return;
-  if(!activeNPC)return;
-  const lines=activeNPC.dialog;
-  messageIndex++;
-  if(messageIndex>=lines.length)messageIndex=0;
-  showNPCDialog(activeNPC);
+/* === BGMフェード === */
+function fadeOutBGM(){
+  let v=bgm.volume;
+  const fade=setInterval(()=>{
+    v=Math.max(0,v-0.05);
+    bgm.volume=v;
+    if(v<=0)clearInterval(fade);
+  },80);
+}
+function fadeInBGM(){
+  let v=bgm.volume;
+  const fade=setInterval(()=>{
+    v=Math.min(1,v+0.05);
+    bgm.volume=v;
+    if(v>=1)clearInterval(fade);
+  },80);
+}
+
+/* === スワイプで移動 === */
+canvas.addEventListener("touchstart",e=>{
+  const t=e.touches[0];touchStartX=t.clientX;touchStartY=t.clientY;isTouching=true;
 });
+canvas.addEventListener("touchmove",e=>{
+  if(!isTouching)return;
+  const t=e.touches[0];
+  const dx=t.clientX-touchStartX,dy=t.clientY-touchStartY;
+  let dir=null;
+  if(Math.abs(dx)>Math.abs(dy)){
+    if(dx>20)dir='right';else if(dx<-20)dir='left';
+  }else{
+    if(dy>20)dir='down';else if(dy<-20)dir='up';
+  }
+  if(dir&&dir!==currentDir){currentDir=dir;movePlayer(dir);}
+});
+canvas.addEventListener("touchend",()=>{isTouching=false;currentDir=null;});
 
 /* === 描画 === */
 function render(){
-  camera.x+=(camera.targetX-camera.x)*0.2;
-  camera.y+=(camera.targetY-camera.y)*0.2;
   ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // マップ
   for(let y=0;y<WORLD_H;y++)for(let x=0;x<WORLD_W;x++){
     const t=world[y][x];
     ctx.fillStyle=t===1?'#2b4f2b':t===2?'#c9a36e':t===3?'#7aa8c2':t===4?'#2a9':'#3a8a3a';
     ctx.fillRect(x*TILE-camera.x,y*TILE-camera.y,TILE,TILE);
   }
-
-  // NPC
-  for(const npc of NPCS){
-    ctx.fillStyle=npc.color;
-    ctx.fillRect(npc.x*TILE-camera.x+6,npc.y*TILE-camera.y+6,TILE-12,TILE-12);
+  for(const npc of npcs){
+    ctx.fillStyle="#ff5";
+    ctx.fillRect(npc.px-camera.x+4,npc.py-camera.y+4,TILE-8,TILE-8);
   }
-
-  // プレイヤー
-  ctx.fillStyle='#66f';
-  ctx.fillRect(player.px-camera.x+4,player.py-camera.y+4,TILE-8,TILE-8);
+  ctx.fillStyle="#66f";
+  ctx.fillRect(player.px-camera.x+6,player.py-camera.y+6,TILE-12,TILE-12);
 }
 
-/* === メインループ === */
-function gameLoop(){
-  updateCameraTarget();
+function loop(){
+  updateCamera();
+  if(!player.moving&&isTouching&&currentDir)movePlayer(currentDir);
+  updateNPCs();
   checkNPCProximity();
   render();
-  requestAnimationFrame(gameLoop);
+  requestAnimationFrame(loop);
 }
-requestAnimationFrame(gameLoop);
-
-/* === スワイプ操作 === */
-let startX=null,startY=null,lastMoveTime=0;
-canvas.addEventListener('touchstart',e=>{
-  const t=e.touches[0];startX=t.clientX;startY=t.clientY;
-});
-canvas.addEventListener('touchmove',e=>{
-  if(!startX||!startY)return;
-  const t=e.touches[0];const dx=t.clientX-startX,dy=t.clientY-startY;
-  const now=performance.now();
-  if(now-lastMoveTime<150)return;
-  if(Math.abs(dx)>Math.abs(dy)){
-    if(dx>20)attemptMove('right');else if(dx<-20)attemptMove('left');
-  }else{
-    if(dy>20)attemptMove('down');else if(dy<-20)attemptMove('up');
-  }
-  lastMoveTime=now;startX=t.clientX;startY=t.clientY;
-});
-canvas.addEventListener('touchend',()=>{startX=startY=null;});
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
