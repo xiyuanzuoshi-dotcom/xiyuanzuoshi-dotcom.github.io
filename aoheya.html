@@ -2,130 +2,288 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>蒼の部屋</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>スマホドットRPG — 記憶の断片</title>
 <style>
-body{background:#ddeeff;margin:0;padding:0;font-family:sans-serif;}
-#game{display:block;margin:20px auto;border:4px solid #444;image-rendering:pixelated;}
-#dialog{position:fixed;left:50%;transform:translateX(-50%);bottom:50px;background:rgba(0,0,0,0.8);color:#fff;padding:10px 16px;border-radius:10px;display:none;max-width:90%;}
-.controls{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:100%;max-width:520px;}
-.dpad{position:absolute;left:8px;bottom:6px;width:140px;height:140px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:6px;}
-.dpad button{border-radius:10px;background:#222;border:2px solid #444;color:#fff;font-weight:700;font-size:18px}
-.center{background:transparent;border:0}
-.actions{position:absolute;right:8px;bottom:6px;display:flex;flex-direction:column;gap:12px;}
-.btn{width:72px;height:72px;border-radius:14px;background:#c33;border:3px solid #700;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 6px 0 rgba(0,0,0,0.6)}
-.btn.b{background:#444;border:3px solid #222}
+  html,body{
+    height:100%;margin:0;
+    background:#000;color:#fff;
+    font-family:sans-serif;
+    touch-action:none;
+    overscroll-behavior:none;
+  }
+  canvas{
+    image-rendering:pixelated;
+    border:6px solid #111;
+    display:block;
+    margin:20px auto;
+    background:#000;
+    touch-action:none;
+  }
+  #dialog{
+    position:fixed;
+    left:50%;
+    transform:translateX(-50%);
+    bottom:140px;
+    max-width:94%;
+    background:rgba(0,0,0,0.8);
+    color:#fff;
+    border:3px solid #555;
+    padding:12px 14px;
+    border-radius:10px;
+    font-size:16px;
+    display:none;
+  }
+  #fade{
+    position:fixed;
+    left:0;top:0;width:100%;height:100%;
+    background:#000;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 1s;
+  }
 </style>
 </head>
 <body>
 <canvas id="game" width="480" height="384"></canvas>
-<div id="dialog"><p id="dialog-text"></p></div>
+<div id="dialog"></div>
+<div id="fade"></div>
 
-<!-- コントローラ -->
-<div class="controls">
-  <div class="dpad" id="dpad">
-    <button></button><button data-dir="up">▲</button><button></button>
-    <button data-dir="left">◀</button><button class="center"></button><button data-dir="right">▶</button>
-    <button></button><button data-dir="down">▼</button><button></button>
-  </div>
-  <div class="actions">
-    <div class="btn a" id="btnA">A</div>
-    <div class="btn b" id="btnB">B</div>
-  </div>
-</div>
+<script>
+const TILE=48,WORLD_W=20,WORLD_H=15;
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+const dialog=document.getElementById("dialog");
+const fade=document.getElementById("fade");
 
-<script type="module">
-import { setupControls } from "./common.js";
+// === マップ定義 ===
+const maps={
+  yoru:{
+    bg:"#001", // 夜道
+    world:Array.from({length:15},()=>Array(20).fill(0)),
+    npcs:[],
+    items:[{x:10,y:7,name:"貝殻のオルゴール",collected:false}],
+    events:[
+      {
+        id:"getShell",
+        trigger:(map,player)=>map.items[0].collected && !map.moved,
+        action:(map)=>{
+          map.moved=true;
+          showDialog("静かな夜。貝殻のオルゴールが微かに鳴った…");
+          setTimeout(()=>{
+            hideDialog();
+            fadeToMap("room");
+          },3000);
+        }
+      }
+    ]
+  },
 
-const TILE=48, W=10, H=8;
-const canvas=document.getElementById("game"), ctx=canvas.getContext("2d");
-const player={x:5,y:6,dir:"up",moving:false,px:5*TILE,py:6*TILE};
-const exit={x:5,y:7};
-const shelves=[
-  {x:2,y:2,text:["古い詩集が並んでいる。","ページの隅に小さく「藤沢 蒼」とある。"]},
-  {x:4,y:2,text:["漫画がぎっしり詰まっている。"]},
-  {x:6,y:2,text:["旅行アルバムが置かれている。","笑顔の少女と青い海。"]}
-];
+  room:{
+    bg:"#333", // 室内
+    world:Array.from({length:15},()=>Array(20).fill(0)),
+    npcs:[
+      {x:8,y:7,text:["……", "静かだな……"],moving:false},
+      {x:10,y:7,text:["おかえり。", "今日は冷えるね。"],moving:false},
+      {x:12,y:7,text:["何か思い出した？", "……まだ、だよね。"],moving:false}
+    ],
+    items:[],
+    events:[
+      {
+        id:"toKioku",
+        trigger:(map,player)=>player.x===10 && player.y===13 && !map.moved,
+        action:(map)=>{
+          map.moved=true;
+          showDialog("——意識が遠のいていく——");
+          setTimeout(()=>{
+            hideDialog();
+            fadeToMap("kioku");
+          },2500);
+        }
+      }
+    ]
+  },
 
-const dialog=document.getElementById("dialog"),dtext=document.getElementById("dialog-text");
-let queue=[];
-
-function showDialog(lines){
-  queue=lines.slice();
-  dialog.style.display="block";
-  dtext.textContent=queue.shift();
-}
-function nextDialog(){
-  if(queue.length>0)dtext.textContent=queue.shift();
-  else dialog.style.display="none";
-}
-
-function isWalkable(x,y){return !(x<0||y<0||x>=W||y>=H);}
-
-function attemptMove(dir){
-  if(player.moving||dialog.style.display==='block')return;
-  player.dir = dir; // ← 向きを更新！
-  let nx=player.x,ny=player.y;
-  if(dir==='up')ny--;
-  else if(dir==='down')ny++;
-  else if(dir==='left')nx--;
-  else if(dir==='right')nx++;
-  if(!isWalkable(nx,ny))return;
-
-  // 出口チェック
-  if(nx===exit.x&&ny===exit.y){
-    window.location.href='index.html';
-    return;
+  kioku:{
+    bg:"#115", // 記憶の世界
+    world:Array.from({length:15},()=>Array(20).fill(0)),
+    npcs:[
+      {x:8,y:7,text:["ここは記憶の海。","漂う想いが形を取る。"],moving:true},
+      {x:10,y:9,text:["……見つけた。","あなたの中の“光”だ。"],moving:true},
+      {x:12,y:6,text:["終わりではなく、始まり。"],moving:true}
+    ],
+    items:[],
+    events:[]
   }
+};
 
-  player.x=nx;
-  player.y=ny;
-  player.px=nx*TILE;
-  player.py=ny*TILE;
-}
+let currentMap="yoru";
+let world=[],npcs=[],items=[],events=[];
+const player={x:10,y:7,px:10*TILE,py:7*TILE,dir:'down',moving:false};
+const camera={x:0,y:0};
+let activeNPC=null,dialogIndex=0,isTouching=false,touchStartX=null,touchStartY=null,currentDir=null;
 
-function pressA(){
-  if(dialog.style.display==='block'){nextDialog();return;}
-  let tx=player.x,ty=player.y;
-  if(player.dir==='up')ty--;
-  else if(player.dir==='down')ty++;
-  else if(player.dir==='left')tx--;
-  else if(player.dir==='right')tx++;
-  const shelf=shelves.find(s=>s.x===tx&&s.y===ty);
-  if(shelf){showDialog(shelf.text);}
-}
-function pressB(){
-  dialog.style.display='none';
-  queue=[];
-}
-
-setupControls({
-  onMove: attemptMove,
-  onA: pressA,
-  onB: pressB
-});
-
-function render(){
-  ctx.fillStyle='#bcd';
+function loadMap(name){
+  currentMap=name;
+  const map=maps[name];
+  world=map.world;
+  npcs=map.npcs;
+  items=map.items;
+  events=map.events;
+  ctx.fillStyle=map.bg;
   ctx.fillRect(0,0,canvas.width,canvas.height);
-
-  // 本棚
-  ctx.fillStyle='#999';
-  for(const s of shelves)ctx.fillRect(s.x*TILE,s.y*TILE,TILE,TILE);
-
-  // 出口
-  ctx.fillStyle='#55f';
-  ctx.fillRect(exit.x*TILE,exit.y*TILE,TILE,TILE);
-
-  // プレイヤー
-  ctx.fillStyle='#33a';
-  ctx.fillRect(player.px,player.py,TILE,TILE);
-
-  requestAnimationFrame(render);
+  player.x=10;player.y=7;
+  player.px=player.x*TILE;player.py=player.y*TILE;
 }
-render();
 
-showDialog(["蒼の部屋だ。","どこか懐かしい匂いがする…"]);
+// === 共通関数 ===
+function fadeToMap(next){
+  fade.style.opacity=1;
+  setTimeout(()=>{
+    loadMap(next);
+    fade.style.opacity=0;
+  },1000);
+}
+
+function showDialog(t){dialog.textContent=t;dialog.style.display="block";}
+function hideDialog(){dialog.style.display="none";activeNPC=null;}
+
+function movePlayer(dir){
+  if(player.moving)return;
+  let nx=player.x,ny=player.y;
+  if(dir==="up")ny--;if(dir==="down")ny++;if(dir==="left")nx--;if(dir==="right")nx++;
+  if(nx<0||ny<0||nx>=WORLD_W||ny>=WORLD_H)return;
+  player.moving=true;
+  const sx=player.x*TILE,sy=player.y*TILE,tx=nx*TILE,ty=ny*TILE;
+  const start=performance.now(),duration=160;
+  function step(){
+    const t=Math.min((performance.now()-start)/duration,1);
+    player.px=sx+(tx-sx)*t;
+    player.py=sy+(ty-sy)*t;
+    if(t<1)requestAnimationFrame(step);
+    else{
+      player.x=nx;player.y=ny;player.moving=false;
+      checkItemPickup();
+      checkEvents();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+function checkItemPickup(){
+  for(const it of items){
+    if(!it.collected && player.x===it.x && player.y===it.y){
+      it.collected=true;
+      showDialog(`「${it.name}」を手に入れた！`);
+      setTimeout(hideDialog,2000);
+    }
+  }
+}
+
+function checkEvents(){
+  if(!events)return;
+  for(const ev of events){
+    if(ev.trigger(maps[currentMap],player)){
+      ev.action(maps[currentMap]);
+    }
+  }
+}
+
+function updateCamera(){
+  camera.x+=(player.px+TILE/2-480/2-camera.x)*0.2;
+  camera.y+=(player.py+TILE/2-384/2-camera.y)*0.2;
+}
+
+function checkProximity(){
+  let near=null;
+  for(const npc of npcs){
+    if(Math.abs(npc.x-player.x)<=1 && Math.abs(npc.y-player.y)<=1){
+      near=npc;break;
+    }
+  }
+  if(near!==activeNPC){
+    if(near){dialogIndex=0;showDialog(near.text[0]);}
+    else hideDialog();
+    activeNPC=near;
+  }
+}
+
+function nextDialog(){
+  if(!activeNPC)return;
+  dialogIndex++;
+  if(dialogIndex<activeNPC.text.length)showDialog(activeNPC.text[dialogIndex]);
+  else hideDialog();
+}
+
+// === タッチ操作 ===
+canvas.addEventListener("touchstart",e=>{
+  e.preventDefault();
+  const t=e.touches[0];
+  touchStartX=t.clientX;touchStartY=t.clientY;isTouching=true;
+});
+canvas.addEventListener("touchmove",e=>{
+  e.preventDefault();
+  if(!isTouching)return;
+  const t=e.touches[0];
+  const dx=t.clientX-touchStartX,dy=t.clientY-touchStartY;
+  let dir=null;
+  if(Math.abs(dx)>Math.abs(dy)){
+    if(dx>20)dir="right";else if(dx<-20)dir="left";
+  }else{
+    if(dy>20)dir="down";else if(dy<-20)dir="up";
+  }
+  if(dir&&dir!==currentDir){currentDir=dir;movePlayer(dir);}
+});
+canvas.addEventListener("touchend",()=>{isTouching=false;currentDir=null;});
+dialog.addEventListener("touchend",nextDialog);
+
+// === NPCランダム移動（記憶マップ）===
+function moveNPCs(){
+  if(currentMap!=="kioku")return;
+  for(const npc of npcs){
+    if(!npc.moving)return;
+    if(Math.random()<0.02){
+      const dir=["up","down","left","right"][Math.floor(Math.random()*4)];
+      if(dir==="up"&&npc.y>1)npc.y--;
+      if(dir==="down"&&npc.y<WORLD_H-2)npc.y++;
+      if(dir==="left"&&npc.x>1)npc.x--;
+      if(dir==="right"&&npc.x<WORLD_W-2)npc.x++;
+    }
+  }
+}
+
+// === 描画 ===
+function render(){
+  ctx.fillStyle=maps[currentMap].bg;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  for(const it of items){
+    if(!it.collected){
+      ctx.fillStyle="#0ff";
+      ctx.beginPath();
+      ctx.arc(it.x*TILE+24-camera.x,it.y*TILE+24-camera.y,10,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+  ctx.fillStyle="#ff5";
+  for(const npc of npcs){
+    ctx.fillRect(npc.x*TILE-camera.x+4,npc.y*TILE-camera.y+4,TILE-8,TILE-8);
+  }
+  ctx.fillStyle="#66f";
+  ctx.fillRect(player.px-camera.x+6,player.py-camera.y+6,TILE-12,TILE-12);
+}
+
+// === ループ ===
+function loop(){
+  updateCamera();
+  moveNPCs();
+  checkProximity();
+  render();
+  requestAnimationFrame(loop);
+}
+
+// 起動
+loadMap("yoru");
+loop();
 </script>
 </body>
 </html>

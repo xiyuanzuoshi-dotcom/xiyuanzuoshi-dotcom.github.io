@@ -1,14 +1,193 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ユイとの最後のひととき</title>
+<style>
+body {
+    font-family: 'Arial', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #000;
+    overflow: hidden;
+}
+
+#game-container {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* 背景画像 */
+#background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 0;
+    transition: background-image 0.5s ease-in-out;
+}
+
+/* キャラクター */
+#character {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 350px;
+    height: 550px;
+    background-size: contain;
+    background-position: bottom center;
+    background-repeat: no-repeat;
+    z-index: 1;
+}
+
+/* テキスト */
+#game-text {
+    position: absolute;
+    bottom: 220px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    font-size: 1.6em;
+    width: 80%;
+    text-align: center;
+    line-height: 1.5em;
+    padding: 15px 20px;
+    background-color: rgba(0, 0, 0, 0.6);
+    border-radius: 12px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+    z-index: 2;
+}
+
+/* 選択肢 */
+#choices {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    z-index: 2;
+}
+
+/* ボタン */
+button {
+    font-size: 1.1em;
+    padding: 15px 20px;
+    border-radius: 10px;
+    border: 2px solid #ccc;
+    background-color: rgba(255, 255, 255, 0.8);
+    color: #333;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+button:hover {
+    background-color: rgba(255, 255, 255, 1);
+}
+
+/* === heya.html遷移時の2D化エフェクト === */
+#world-shift-effect {
+    position: fixed;
+    inset: 0;
+    background: black;
+    z-index: 10000;
+    overflow: hidden;
+    animation: pixelShift 1.5s ease forwards;
+}
+
+#world-shift-effect .scanline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: repeating-linear-gradient(
+        to bottom,
+        rgba(255,255,255,0.05) 0px,
+        rgba(0,0,0,0.1) 2px,
+        transparent 4px
+    );
+    animation: scan 1s linear infinite;
+}
+
+#world-shift-effect .pixelate {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        to right,
+        rgba(255,255,255,0.05) 0px,
+        rgba(0,0,0,0.05) 2px,
+        transparent 4px
+    );
+    mix-blend-mode: overlay;
+    animation: pixelFade 1.5s ease forwards;
+}
+
+@keyframes pixelShift {
+    0% { opacity: 0; filter: none; }
+    30% { opacity: 1; filter: contrast(200%) saturate(150%) hue-rotate(30deg); }
+    70% { filter: blur(3px) contrast(300%) saturate(50%); }
+    100% { opacity: 1; filter: blur(20px) brightness(0); }
+}
+
+@keyframes scan {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100%); }
+}
+
+@keyframes pixelFade {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+/* === heya.html 側の登場演出 === */
+#heya-fadein {
+    position: fixed;
+    inset: 0;
+    background: black;
+    z-index: 1000;
+    animation: heyaFadeIn 2s ease forwards;
+}
+
+@keyframes heyaFadeIn {
+    0% { opacity: 1; filter: blur(10px); }
+    100% { opacity: 0; filter: none; }
+}
+</style>
+</head>
+<body>
+<div id="game-container">
+    <div id="game-text"></div>
+    <div id="choices"></div>
+    <div id="character"></div>
+    <div id="background"></div>
+</div>
+
+<script>
 // ゲームの全シーン定義
 const gameData = {
     scenes: [
-        { id: 0, text: "日向 蒼：今日もバイト疲れたな、早く帰って寝よう", choices: [{ text: "次へ", nextSceneId: 1 }], background: "scene_1.png", character: "" },
-        { id: 1, text: "日向 蒼：貝殻のオルゴールだ...", choices: [{ text: "持って帰る", nextSceneId: 3 }, { text: "そのまま帰る", nextSceneId: 2 }], background: "scene_1.png", character: "" },
-        { id: 2, text: "日向 蒼：明日もまた朝からバイトだなあ...", choices: [], background: "scene_1.png", character: "" },
-        { id: 3, text: "日向 蒼：すごく綺麗だな、どこかでみた気がするけど...", choices: [{ text: "次へ", nextSceneId: 4 }], background: "scene_2.png", character: "" },
-        { id: 4, text: "日向 蒼：持って帰っちゃったけど、明日交番に持って行かなきゃ", choices: [{ text: "交番へ持っていく", nextSceneId: 6 }, { text: "自分のものにする", nextSceneId: 5 }], background: "scene_2.png", character: "" },
-        { id: 5, text: "日向 蒼：良い音色だなあ、どこかで聞いたことあるような...", choices: [], background: "scene_2.png", character: "" },
+        { id: 0, text: "花井 葉 ：今日もバイト疲れたな、早く帰って寝よう", choices: [{ text: "次へ", nextSceneId: 1 }], background: "scene_1.png", character: "" },
+        { id: 1, text: "花井 葉 ：貝殻のオルゴールだ...", choices: [{ text: "持って帰る", nextSceneId: 3 }, { text: "そのまま帰る", nextSceneId: 2 }], background: "scene_1.png", character: "" },
+        { id: 2, text: "花井 葉 ：明日もまた朝からバイトだなあ...", choices: [], background: "scene_1.png", character: "" },
+        { id: 3, text: "花井 葉 ：すごく綺麗だな、どこかでみた気がするけど...", choices: [{ text: "次へ", nextSceneId: 4 }], background: "scene_2.png", character: "" },
+        { id: 4, text: "花井 葉 ：持って帰っちゃったけど、明日交番に持って行かなきゃ", choices: [{ text: "交番へ持っていく", nextSceneId: 6 }, { text: "自分のものにする", nextSceneId: 5 }], background: "scene_2.png", character: "" },
+        { id: 5, text: "花井 葉 ：良い音色だなあ、どこかで聞いたことあるような...", choices: [], background: "scene_2.png", character: "" },
         { id: 6, text: "警察官：ありがとね、名前は？", choices: [], background: "scene_3.png", character: "" },
-        { id: 7, text: "日向 蒼：落とし主が見つかるといいな、でも、どこかでみたことがあるんだけどな...", choices: [], background: "scene_3.png", character: "" },
+        { id: 7, text: "花井 葉 ：落とし主が見つかるといいな、でも、どこかでみたことがあるんだけどな...", choices: [], background: "scene_3.png", character: "" },
         { id: 8, text: "ユイ：藤沢くん、ありがとう", choices: [{ text: "次へ", nextSceneId: 9 }], background: "scene_4.png", character: "" },
         { id: 9, text: "次作へ続く！！！", choices: [], background: "scene_4.png", character: "" }
     ]
@@ -123,7 +302,7 @@ function renderScene() {
             const name = input.value.trim();
             if (!name) return alert("名前を入力してください。");
             playerName = name;
-            currentSceneId = playerName === "藤沢 蒼" ? 8 : 7;
+            currentSceneId = playerName === "ゆめのよう" ? 8 : 7;
             renderScene();
         };
 
@@ -159,3 +338,6 @@ function renderScene() {
 
 // ゲーム開始
 renderScene();
+</script>
+</body>
+</html>

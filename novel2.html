@@ -169,11 +169,6 @@ let currentSceneId = 0;
 let currentTextIndex = 0;
 let playerName = "";
 
-// ✅ URLに ?id=6 があればその値を使用、なければ0
-const params = new URLSearchParams(window.location.search);
-const startId = parseInt(params.get("id"));
-currentSceneId = isNaN(startId) ? 0 : startId;
-
 function renderScene() {
   const scene = gameData.scenes[currentSceneId];
   const textEl = document.getElementById("game-text");
@@ -237,7 +232,7 @@ function renderScene() {
     if (scene.event === "goToHeya") {
       const btn = document.createElement("button");
       btn.textContent = "部屋へ戻る ▶";
-      btn.onclick = () => transitionTo("heya.html?id=6");
+      btn.onclick = () => transitionTo("heya.html");
       actionEl.appendChild(btn);
     }
   }
