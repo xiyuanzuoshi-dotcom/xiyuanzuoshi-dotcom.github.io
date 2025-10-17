@@ -1,130 +1,155 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>スマホドットRPG — スワイプ操作版</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>蒼の部屋RPG</title>
 <style>
-  html,body{height:100%;margin:0;background:#071018;color:#e6f7ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Kaku Gothic ProN',Meiryo,sans-serif;touch-action:none;}
-  #wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px}
-  canvas{image-rendering:pixelated;border:6px solid #111;background:#073;display:block;touch-action:none;}
-  .controls{position:relative;width:100%;max-width:520px;height:100px;margin-top:8px;}
-  .actions{position:absolute;right:8px;bottom:6px;display:flex;flex-direction:column;gap:12px;}
-  .btn{width:72px;height:72px;border-radius:14px;background:#c33;border:3px solid #700;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 6px 0 rgba(0,0,0,0.6);}
-  .btn.b{background:#444;border:3px solid #222;}
-  #dialog{position:fixed;left:50%;transform:translateX(-50%);bottom:170px;max-width:94%;background:rgba(0,0,0,0.9);color:#fff;border:3px solid #333;padding:10px;border-radius:10px;font-size:16px;display:none;}
-  .help{font-size:13px;color:#9fd;text-align:center;}
-  @media(min-width:760px){canvas{width:760px;height:auto;}}
+body{background:#cce0ff;margin:0;overflow:hidden;}
+canvas{display:block;margin:20px auto;border:3px solid #333;touch-action:none;image-rendering:pixelated;}
 </style>
 </head>
 <body>
-  <div id="wrap">
-    <h3>スマホドットRPG — スワイプ操作版</h3>
-    <canvas id="game" width="480" height="384"></canvas>
-    <div class="help">画面をスワイプで移動 / タップで向き変更 / A: 話す / B: キャンセル</div>
-    <div class="controls">
-      <div class="actions">
-        <div class="btn a" id="btnA">A</div>
-        <div class="btn b" id="btnB">B</div>
-      </div>
-    </div>
-  </div>
-
-  <div id="dialog"><p id="dialog-text"></p></div>
-
+<canvas id="game" width="480" height="320"></canvas>
 <script>
-/* === ここからゲーム本体（元コード流用） === */
-const TILE = 48;
-const WORLD_W=20, WORLD_H=15;
-const VIEW_W=10, VIEW_H=8;
-const canvas=document.getElementById('game');
-const ctx=canvas.getContext('2d');
-const VIEW_PX_W=VIEW_W*TILE, VIEW_PX_H=VIEW_H*TILE;
-const world=[
- [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
- [1,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,3,3,0,1],
- [1,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,3,3,0,1],
- [1,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,1],
- [1,0,2,2,2,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1],
- [1,0,2,0,2,0,0,0,0,0,0,2,0,2,0,0,0,0,0,1],
- [1,0,2,2,2,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// マップ設定
+const tileSize = 48;
+const mapWidth = 10;
+const mapHeight = 7;
+const map = [
+ [0,0,0,0,0,0,0,0,0,0],
+ [0,1,1,1,1,1,1,1,1,0],
+ [0,1,0,0,0,0,0,0,1,0],
+ [0,1,0,1,1,1,1,0,1,0],
+ [0,1,0,1,0,0,1,0,1,0],
+ [0,1,1,1,1,1,1,1,1,0],
+ [0,0,0,0,0,0,0,0,0,0]
 ];
-const entrance={x:19,y:7};
-const player={x:10,y:7,dir:'down',moving:false,px:10*TILE,py:7*TILE};
-const camera={x:0,y:0,targetX:0,targetY:0};
-const dialogEl=document.getElementById('dialog');
-const dialogText=document.getElementById('dialog-text');
-let dialogQueue=[];
-function showDialog(lines){dialogQueue=lines.slice();dialogEl.style.display='block';dialogText.textContent=dialogQueue.shift()||'';}
-function nextDialog(){if(dialogQueue.length>0)dialogText.textContent=dialogQueue.shift();else dialogEl.style.display='none';}
-function isWalkable(x,y){if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;const t=world[y][x];return t!==1&&t!==4;}
-function attemptMove(dir){
-  if(player.moving||dialogEl.style.display==='block')return;
-  let nx=player.x,ny=player.y;
-  if(dir==='up')ny--;if(dir==='down')ny++;if(dir==='left')nx--;if(dir==='right')nx++;
-  if(nx===entrance.x&&ny===entrance.y){window.location.href='forest.html';return;}
-  if(!isWalkable(nx,ny))return;
-  player.moving=true;player.dir=dir;
-  const startX=player.x*TILE,startY=player.y*TILE,targetX=nx*TILE,targetY=ny*TILE;
-  const duration=150,startTime=performance.now();
-  function step(){
-    const t=(performance.now()-startTime)/duration;
-    if(t>=1){player.px=targetX;player.py=targetY;player.x=nx;player.y=ny;player.moving=false;}
-    else{player.px=startX+(targetX-startX)*t;player.py=startY+(targetY-startY)*t;requestAnimationFrame(step);}
-  }requestAnimationFrame(step);
-}
-function pressA(){if(dialogEl.style.display==='block'){nextDialog();return;}showDialog(['誰もいない…']);}
-function pressB(){dialogEl.style.display='none';dialogQueue=[];}
-function updateCameraTarget(){
-  let tx=player.px+TILE/2-VIEW_PX_W/2;let ty=player.py+TILE/2-VIEW_PX_H/2;
-  tx=Math.max(0,Math.min(tx,WORLD_W*TILE-VIEW_PX_W));
-  ty=Math.max(0,Math.min(ty,WORLD_H*TILE-VIEW_PX_H));
-  camera.targetX=tx;camera.targetY=ty;
-}
-function render(){
-  camera.x+=(camera.targetX-camera.x)*0.2;camera.y+=(camera.targetY-camera.y)*0.2;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  for(let y=0;y<WORLD_H;y++)for(let x=0;x<WORLD_W;x++){
-    const t=world[y][x];
-    ctx.fillStyle=t===1?'#2b4f2b':t===2?'#c9a36e':t===3?'#7aa8c2':t===4?'#2a9':'#3a8a3a';
-    ctx.fillRect(x*TILE-camera.x,y*TILE-camera.y,TILE,TILE);
-  }
-  ctx.fillStyle='#66f';ctx.fillRect(player.px-camera.x+4,player.py-camera.y+4,TILE-8,TILE-8);
-}
-function gameLoop(){updateCameraTarget();render();requestAnimationFrame(gameLoop);}
-requestAnimationFrame(gameLoop);
 
-/* === スワイプ操作追加 === */
-let startX=null,startY=null,lastMoveTime=0;
-canvas.addEventListener('touchstart',e=>{
-  const t=e.touches[0];startX=t.clientX;startY=t.clientY;
+// プレイヤー設定
+let player = {x:2, y:2, px:2, py:2, moveX:0, moveY:0, moving:false, speed:4};
+
+// 村人設定
+let npcs = [
+ {x:4, y:3, color:"orange"},
+ {x:6, y:5, color:"purple"}
+];
+
+// 移動方向
+let moveDir = null;
+let touchActive = false;
+
+// タイル描画
+function drawTile(x, y, type){
+ if(type===0){ctx.fillStyle="#2277cc";}
+ else{ctx.fillStyle="#77cc55";}
+ ctx.fillRect(x*tileSize, y*tileSize, tileSize, tileSize);
+}
+
+// 描画
+function draw(){
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ // マップ
+ for(let y=0;y<mapHeight;y++){
+   for(let x=0;x<mapWidth;x++){
+     drawTile(x,y,map[y][x]);
+   }
+ }
+ // 村人
+ for(let npc of npcs){
+   ctx.fillStyle = npc.color;
+   ctx.beginPath();
+   ctx.arc(npc.x*tileSize+tileSize/2, npc.y*tileSize+tileSize/2, tileSize/2.5, 0, Math.PI*2);
+   ctx.fill();
+ }
+ // プレイヤー
+ const px = player.px*tileSize + player.moveX;
+ const py = player.py*tileSize + player.moveY;
+ ctx.fillStyle="red";
+ ctx.beginPath();
+ ctx.arc(px+tileSize/2, py+tileSize/2, tileSize/2.5, 0, Math.PI*2);
+ ctx.fill();
+}
+
+// 移動開始
+function startMove(dir){
+ if(player.moving) return;
+ let dx=0, dy=0;
+ if(dir==="left") dx=-1;
+ if(dir==="right") dx=1;
+ if(dir==="up") dy=-1;
+ if(dir==="down") dy=1;
+ const nx = player.px + dx;
+ const ny = player.py + dy;
+ if(map[ny][nx]===1){
+   player.moving=true;
+   player.px=nx; player.py=ny;
+   player.moveX=-dx*tileSize;
+   player.moveY=-dy*tileSize;
+   const step=()=>{
+     player.moveX+=dx*player.speed;
+     player.moveY+=dy*player.speed;
+     if(Math.abs(player.moveX)===0 && Math.abs(player.moveY)===0){
+       player.moving=false;
+     }
+     if(Math.abs(player.moveX) < tileSize && Math.abs(player.moveY) < tileSize && player.moving){
+       requestAnimationFrame(step);
+     }else{
+       player.moveX=0;
+       player.moveY=0;
+       player.moving=false;
+     }
+   };
+   requestAnimationFrame(step);
+ }
+}
+
+// タッチ方向判定
+function getDir(touch){
+ const rect = canvas.getBoundingClientRect();
+ const x = touch.clientX - rect.left;
+ const y = touch.clientY - rect.top;
+ const cx = canvas.width/2;
+ const cy = canvas.height/2;
+ const dx = x - cx;
+ const dy = y - cy;
+ if(Math.abs(dx)>Math.abs(dy)){
+   return dx>0 ? "right" : "left";
+ }else{
+   return dy>0 ? "down" : "up";
+ }
+}
+
+// タッチイベント
+canvas.addEventListener("touchstart",e=>{
+ touchActive=true;
+ moveDir=getDir(e.touches[0]);
+ startMove(moveDir);
 });
-canvas.addEventListener('touchmove',e=>{
-  if(!startX||!startY)return;
-  const t=e.touches[0];const dx=t.clientX-startX,dy=t.clientY-startY;
-  const now=performance.now();
-  if(now-lastMoveTime<150)return; // 移動間隔
-  if(Math.abs(dx)>Math.abs(dy)){
-    if(dx>20)attemptMove('right');else if(dx<-20)attemptMove('left');
-  }else{
-    if(dy>20)attemptMove('down');else if(dy<-20)attemptMove('up');
-  }
-  lastMoveTime=now;startX=t.clientX;startY=t.clientY;
+canvas.addEventListener("touchend",()=>{
+ touchActive=false;
+ moveDir=null;
 });
-canvas.addEventListener('touchend',()=>{startX=startY=null;});
+canvas.addEventListener("touchmove",e=>{
+ e.preventDefault();
+ const dir = getDir(e.touches[0]);
+ if(dir!==moveDir){
+   moveDir=dir;
+ }
+});
 
-/* === A/Bボタン === */
-document.getElementById('btnA').addEventListener('touchstart',()=>pressA());
-document.getElementById('btnB').addEventListener('touchstart',()=>pressB());
-
+// メインループ
+function loop(){
+ if(touchActive && !player.moving && moveDir){
+   startMove(moveDir);
+ }
+ draw();
+ requestAnimationFrame(loop);
+}
+loop();
 </script>
 </body>
 </html>
