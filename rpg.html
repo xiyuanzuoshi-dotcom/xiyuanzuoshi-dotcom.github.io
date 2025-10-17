@@ -2,9 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<!-- ✅ iOSズーム完全防止 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no">
-<title>スマホドットRPG — アイテム取得でセリフ変化</title>
+<title>スマホドットRPG — 竜出現版</title>
 <style>
   html,body{
     height:100%;margin:0;
@@ -85,7 +84,10 @@ const npcs=[
 ];
 
 // === アイテム ===
-let item = {x:11, y:7, collected:false, name:"光る石"};
+let item = {x:3, y:3, collected:false, name:"光る石"};
+
+// === 竜 ===
+let dragon = {x:16, y:9, visible:false, size:2};
 
 const dialog=document.getElementById("dialog");
 let activeNPC=null,dialogIndex=0,dialogVisible=false;
@@ -95,9 +97,20 @@ let npcMoveTimer=0;
 function isWalkable(x,y){
   if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;
   if(world[y][x]===1||world[y][x]===4)return false;
+
+  // NPCとの衝突
   for(const npc of npcs){
     if(Math.round(npc.x)===x&&Math.round(npc.y)===y)return false;
   }
+
+  // 竜が出現している場合、竜の2x2範囲に侵入不可
+  if(dragon.visible){
+    if(x>=dragon.x && x<dragon.x+dragon.size &&
+       y>=dragon.y && y<dragon.y+dragon.size){
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -128,12 +141,21 @@ function checkItemPickup(){
   if(!item.collected && player.x===item.x && player.y===item.y){
     item.collected=true;
     showDialog(`「${item.name}」を手に入れた！`);
-    // NPCのセリフを変更
+
+    // NPCのセリフ変更
     npcs[1].text=[
       "おお…それはまさか、伝説の光る石ではないか！",
       "よくぞ見つけてくれた、旅の者よ。",
-      "この村にも再び光が戻るだろう。ありがとう。"
+      "その光が封印を解く……竜が目覚める時だ！"
     ];
+
+    // 竜を出現させる
+    setTimeout(()=>{
+      dragon.visible=true;
+      showDialog("地面が震えている…！竜が目を覚ました！");
+      setTimeout(hideDialog,2500);
+    },2500);
+
     setTimeout(hideDialog,2000);
   }
 }
@@ -236,32 +258,38 @@ canvas.addEventListener("touchend",e=>{
   isTouching=false;currentDir=null;
 });
 
-/* === iOSダブルタップズーム防止 === */
-let lastTouchEnd=0;
-document.addEventListener('touchend',function(e){
-  const now=(new Date()).getTime();
-  if(now-lastTouchEnd<=300)e.preventDefault();
-  lastTouchEnd=now;
-},false);
-
 /* === 描画 === */
 function render(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // 地形
   for(let y=0;y<WORLD_H;y++)for(let x=0;x<WORLD_W;x++){
     const t=world[y][x];
     ctx.fillStyle=t===1?'#2b4f2b':t===2?'#c9a36e':t===3?'#7aa8c2':t===4?'#2a9':'#3a8a3a';
     ctx.fillRect(x*TILE-camera.x,y*TILE-camera.y,TILE,TILE);
   }
+
+  // アイテム
   if(!item.collected){
     ctx.fillStyle="#0ff";
     ctx.beginPath();
     ctx.arc(item.x*TILE+TILE/2-camera.x,item.y*TILE+TILE/2-camera.y,10,0,Math.PI*2);
     ctx.fill();
   }
+
+  // 竜
+  if(dragon.visible){
+    ctx.fillStyle="#f33";
+    ctx.fillRect(dragon.x*TILE-camera.x, dragon.y*TILE-camera.y, TILE*dragon.size, TILE*dragon.size);
+  }
+
+  // NPC
   for(const npc of npcs){
     ctx.fillStyle="#ff5";
     ctx.fillRect(npc.px-camera.x+4,npc.py-camera.y+4,TILE-8,TILE-8);
   }
+
+  // プレイヤー
   ctx.fillStyle="#66f";
   ctx.fillRect(player.px-camera.x+6,player.py-camera.y+6,TILE-12,TILE-12);
 }

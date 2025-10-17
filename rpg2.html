@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no">
-<title>スマホドットRPG — 竜出現版</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>スマホドットRPG — 竜の目覚めと旅立ち</title>
 <style>
   html,body{
     height:100%;margin:0;
@@ -35,36 +35,59 @@
     display:none;
     transition:opacity 0.3s;
   }
+  #fade{
+    position:fixed;
+    left:0;top:0;width:100%;height:100%;
+    background:#000;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 1s;
+  }
 </style>
 </head>
 <body>
 <canvas id="game" width="480" height="384"></canvas>
 <div id="dialog"></div>
+<div id="fade"></div>
 
 <script>
 const TILE=48, WORLD_W=20, WORLD_H=15;
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
+const fade=document.getElementById("fade");
 
-const world=[
- [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
- [1,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,3,3,0,1],
- [1,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,3,3,0,1],
- [1,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,1],
- [1,0,2,2,2,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1],
- [1,0,2,0,2,0,0,0,0,0,0,2,0,2,0,0,0,0,0,1],
- [1,0,2,2,2,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-];
+let currentMap="village";
 
-const player={x:10,y:7,px:10*TILE,py:7*TILE,dir:'down',moving:false,moveDir:null};
+// === マップ定義 ===
+const maps={
+  village:{
+    world:[
+      [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      [1,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,3,3,0,1],
+      [1,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,3,3,0,1],
+      [1,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,0,0,0,1],
+      [1,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,0,0,0,1],
+      [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+      [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,1],
+      [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,1],
+      [1,0,2,2,2,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1],
+      [1,0,2,0,2,0,0,0,0,0,0,2,0,2,0,0,0,0,0,1],
+      [1,0,2,2,2,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1],
+      [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+      [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+      [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+      [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ]
+  },
+  sky:{
+    world:Array.from({length:15},()=>Array.from({length:20},()=>3)), // 全部青空
+  }
+};
+
+let world=maps.village.world;
+
+// === キャラと状態 ===
+const player={x:10,y:7,px:10*TILE,py:7*TILE,dir:'down',moving:false};
 const camera={x:0,y:0};
 
 const npcs=[
@@ -83,34 +106,36 @@ const npcs=[
   ]}
 ];
 
-// === アイテム ===
-let item = {x:3, y:3, collected:false, name:"光る石"};
+let item={x:3,y:3,collected:false,name:"光る石"};
 
-// === 竜 ===
-let dragon = {x:16, y:9, visible:false, size:2};
+let dragon={
+  x:16,y:9,visible:false,size:2,alpha:1,
+  text:[
+    "……目覚めの光か……。",
+    "長き眠りから、ようやく解かれたようだ。",
+    "人の子よ、その石をどこで手に入れた？",
+    "封印は解かれた。運命の歯車が再び回り始める……。",
+    "世界の行く末は、お前の選択に委ねられよう……",
+    "さらばだ、人の子よ。私は空へ帰る――"
+  ]
+};
 
 const dialog=document.getElementById("dialog");
 let activeNPC=null,dialogIndex=0,dialogVisible=false;
 let touchStartX=null,touchStartY=null,currentDir=null,isTouching=false;
-let npcMoveTimer=0;
 
 function isWalkable(x,y){
   if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;
   if(world[y][x]===1||world[y][x]===4)return false;
-
-  // NPCとの衝突
   for(const npc of npcs){
     if(Math.round(npc.x)===x&&Math.round(npc.y)===y)return false;
   }
-
-  // 竜が出現している場合、竜の2x2範囲に侵入不可
-  if(dragon.visible){
+  if(dragon.visible && currentMap==="village"){
     if(x>=dragon.x && x<dragon.x+dragon.size &&
        y>=dragon.y && y<dragon.y+dragon.size){
       return false;
     }
   }
-
   return true;
 }
 
@@ -136,27 +161,21 @@ function movePlayer(dir){
   requestAnimationFrame(step);
 }
 
-/* === アイテム取得判定 === */
+/* === アイテム取得 === */
 function checkItemPickup(){
   if(!item.collected && player.x===item.x && player.y===item.y){
     item.collected=true;
     showDialog(`「${item.name}」を手に入れた！`);
-
-    // NPCのセリフ変更
     npcs[1].text=[
       "おお…それはまさか、伝説の光る石ではないか！",
       "よくぞ見つけてくれた、旅の者よ。",
       "その光が封印を解く……竜が目覚める時だ！"
     ];
-
-    // 竜を出現させる
     setTimeout(()=>{
       dragon.visible=true;
       showDialog("地面が震えている…！竜が目を覚ました！");
       setTimeout(hideDialog,2500);
     },2500);
-
-    setTimeout(hideDialog,2000);
   }
 }
 
@@ -166,42 +185,27 @@ function updateCamera(){
   camera.y+=(player.py+TILE/2-384/2-camera.y)*0.2;
 }
 
-/* === NPC移動 === */
-function updateNPCs(dt){
-  npcMoveTimer+=dt;
-  if(npcMoveTimer>=5000){
-    npcMoveTimer=0;
-    for(const npc of npcs){
-      if(activeNPC===npc)continue;
-      const dir=Math.floor(Math.random()*4);
-      const dx=[1,-1,0,0][dir];
-      const dy=[0,0,1,-1][dir];
-      const nx=Math.round(npc.x)+dx;
-      const ny=Math.round(npc.y)+dy;
-      if(isWalkable(nx,ny)){
-        npc.x=nx;npc.y=ny;
-        npc.px=nx*TILE;npc.py=ny*TILE;
-      }
-    }
-  }
-}
-
-/* === NPCとの距離チェック === */
-function checkNPCProximity(){
+/* === 近接チェック === */
+function checkProximity(){
   let near=null;
   for(const npc of npcs){
     const dx=Math.abs(npc.x-player.x);
     const dy=Math.abs(npc.y-player.y);
     if(dx<=1&&dy<=1){near=npc;break;}
   }
+  if(!near && dragon.visible){
+    const dx=Math.abs(dragon.x-player.x);
+    const dy=Math.abs(dragon.y-player.y);
+    if(dx<=2&&dy<=2){near=dragon;}
+  }
   if(near!==activeNPC){
     if(near){dialogIndex=0;showDialog(near.text[0]);}
-    else {hideDialog();}
+    else hideDialog();
     activeNPC=near;
   }
 }
 
-/* === 会話 === */
+/* === 会話進行 === */
 function showDialog(text){
   dialog.style.display="block";
   dialog.textContent=text;
@@ -214,31 +218,56 @@ function hideDialog(){
 function nextDialog(){
   if(!activeNPC)return;
   dialogIndex++;
-  if(dialogIndex<activeNPC.text.length)showDialog(activeNPC.text[dialogIndex]);
-  else {hideDialog();activeNPC=null;}
+  if(dialogIndex<activeNPC.text.length){
+    showDialog(activeNPC.text[dialogIndex]);
+  }else{
+    if(activeNPC===dragon){
+      startDragonDeparture(); // 🐉竜が飛び立つ
+    }
+    hideDialog();activeNPC=null;
+  }
 }
 
-/* === 長押しでキャンセル === */
-let holdTimer=null;
-let isHolding=false;
+/* === 竜の飛び立ち → 次マップ === */
+function startDragonDeparture(){
+  let fadeStep=0;
+  const flyInterval=setInterval(()=>{
+    dragon.y-=0.1; dragon.alpha-=0.02;
+    if(dragon.alpha<=0){
+      clearInterval(flyInterval);
+      fade.style.opacity=1;
+      setTimeout(()=>{
+        loadNextMap();
+      },1500);
+    }
+  },100);
+}
+
+function loadNextMap(){
+  currentMap="sky";
+  world=maps.sky.world;
+  dragon.visible=false;
+  fade.style.opacity=0;
+  player.x=10;player.y=7;player.px=player.x*TILE;player.py=player.y*TILE;
+  showDialog("——空の世界へ——");
+  setTimeout(hideDialog,3000);
+}
+
+/* === タッチ操作 === */
+let holdTimer=null,isHolding=false;
 dialog.addEventListener("touchstart",()=>{
   isHolding=false;
-  holdTimer=setTimeout(()=>{
-    isHolding=true;
-    hideDialog();activeNPC=null;
-  },600);
+  holdTimer=setTimeout(()=>{isHolding=true;hideDialog();activeNPC=null;},600);
 });
 dialog.addEventListener("touchend",()=>{
-  if(holdTimer){clearTimeout(holdTimer);}
+  if(holdTimer)clearTimeout(holdTimer);
   if(!isHolding)nextDialog();
 });
 
-/* === スワイプ操作 === */
 canvas.addEventListener("touchstart",e=>{
   e.preventDefault();
   const t=e.touches[0];
-  touchStartX=t.clientX;touchStartY=t.clientY;
-  isTouching=true;
+  touchStartX=t.clientX;touchStartY=t.clientY;isTouching=true;
 });
 canvas.addEventListener("touchmove",e=>{
   e.preventDefault();
@@ -261,35 +290,27 @@ canvas.addEventListener("touchend",e=>{
 /* === 描画 === */
 function render(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // 地形
   for(let y=0;y<WORLD_H;y++)for(let x=0;x<WORLD_W;x++){
     const t=world[y][x];
-    ctx.fillStyle=t===1?'#2b4f2b':t===2?'#c9a36e':t===3?'#7aa8c2':t===4?'#2a9':'#3a8a3a';
+    ctx.fillStyle=t===1?'#2b4f2b':t===2?'#c9a36e':t===3?'#6bc3ff':t===4?'#2a9':'#3a8a3a';
     ctx.fillRect(x*TILE-camera.x,y*TILE-camera.y,TILE,TILE);
   }
-
-  // アイテム
-  if(!item.collected){
+  if(!item.collected && currentMap==="village"){
     ctx.fillStyle="#0ff";
     ctx.beginPath();
     ctx.arc(item.x*TILE+TILE/2-camera.x,item.y*TILE+TILE/2-camera.y,10,0,Math.PI*2);
     ctx.fill();
   }
-
-  // 竜
-  if(dragon.visible){
+  if(dragon.visible && currentMap==="village"){
+    ctx.globalAlpha=dragon.alpha;
     ctx.fillStyle="#f33";
-    ctx.fillRect(dragon.x*TILE-camera.x, dragon.y*TILE-camera.y, TILE*dragon.size, TILE*dragon.size);
+    ctx.fillRect(dragon.x*TILE-camera.x,dragon.y*TILE-camera.y,TILE*dragon.size,TILE*dragon.size);
+    ctx.globalAlpha=1;
   }
-
-  // NPC
   for(const npc of npcs){
     ctx.fillStyle="#ff5";
     ctx.fillRect(npc.px-camera.x+4,npc.py-camera.y+4,TILE-8,TILE-8);
   }
-
-  // プレイヤー
   ctx.fillStyle="#66f";
   ctx.fillRect(player.px-camera.x+6,player.py-camera.y+6,TILE-12,TILE-12);
 }
@@ -300,8 +321,7 @@ function loop(now){
   const dt=now-last;last=now;
   updateCamera();
   if(!player.moving&&isTouching&&currentDir)movePlayer(currentDir);
-  updateNPCs(dt);
-  checkNPCProximity();
+  checkProximity();
   render();
   requestAnimationFrame(loop);
 }
