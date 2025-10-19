@@ -281,4 +281,109 @@ function update(dt){
   position.x += (desiredX - position.x) * 0.2;
 
   // forward movement
-  position.z += speed * dt * 10
+  position.z += speed * dt * 10; //scale for visible speed
+  bike.position.set(position.x, 0.6, position.z);
+
+  // camera follow: behind the bike
+  const camTarget = new THREE.Vector3(position.x, 1.5, position.z + 2.5);
+  camera.position.lerp(new THREE.Vector3(position.x, 4.0, position.z - 8.0), 0.12);
+  camera.lookAt(camTarget);
+
+  // wheelie detection: use beta (front-back). beta positive is phone tilted forward (=leaning forward). 
+  // We assume: beta < -12 deg => leaning back => wheelie
+  const wheelieThreshold = -12;
+  const wheelieMax = -45; // if leaning too much, it's a fall
+  if (input.beta < wheelieThreshold && speed > 3) {
+    // wheelie active
+    wheelieActive = true;
+    wheelieTime += dt;
+  } else {
+    wheelieActive = false;
+  }
+
+  // if leaning too far back -> fall (but no instant game over, apply penalty)
+  if (input.beta < wheelieMax && fallCooldown <= 0) {
+    // fall!
+    applyFall();
+  }
+
+  // collision with walls: simple check if abs(x) > roadHalfWidth
+  if (Math.abs(position.x) > roadHalfWidth) {
+    const now = performance.now()/1000;
+    if (now - lastCollisionAt > collisionCooldown) {
+      lastCollisionAt = now;
+      applyCollision();
+    }
+    // also push bike a bit back inside so it doesn't keep triggering continuous collisions
+    position.x = THREE.MathUtils.clamp(position.x, -roadHalfWidth-0.5, roadHalfWidth+0.5);
+    speed *= 0.6; // instant slow down
+  }
+
+  // update HUD
+  HUD.timerEl.innerText = timer.toFixed(2);
+  HUD.distanceEl.innerText = Math.min(position.z, goalDistance).toFixed(1);
+  HUD.speedEl.innerText = speed.toFixed(2);
+  HUD.wheelieEl.innerText = wheelieTime.toFixed(2);
+  HUD.damageEl.innerText = Math.round(damage);
+
+  // check goal
+  if (position.z >= goalDistance) {
+    running = false;
+    showResult(true);
+  }
+
+  // cooldown timers
+  if (fallCooldown > 0) fallCooldown -= dt;
+}
+
+function applyCollision(){
+  // wall hit: time loss + damage + reduce speed (handled in update)
+  const timePenalty = 3.0; // seconds
+  timer = Math.max(0, timer - timePenalty);
+  damage += 12; // increase damage
+  damage = Math.min(100, damage);
+  // quick visual: flash camera or change bike color briefly
+  bike.material.color.setHex(0xff6b6b);
+  setTimeout(()=> bike.material.color.setHex(0x2a9d8f), 300);
+  // add small knockback
+  position.z = Math.max(0, position.z - 4.0);
+}
+
+function applyFall(){
+  // falling from over-tilt: time loss + speed penalty + instability increase
+  const timePenalty = 4.0;
+  timer = Math.max(0, timer - timePenalty);
+  damage += 8;
+  damage = Math.min(100, damage);
+  speed *= 0.5;
+  fallCooldown = 1.5;
+  // visual: rotate bike a bit and then recover
+  const origRot = bike.rotation.z;
+  bike.rotation.z = 0.6 * (Math.random() > 0.5 ? 1 : -1);
+  setTimeout(()=> { bike.rotation.z = origRot; }, 500);
+  // small engine sputter color
+  bike.material.color.setHex(0xffb703);
+  setTimeout(()=> bike.material.color.setHex(0x2a9d8f), 600);
+}
+
+// show result modal (simple alert for prototype)
+function showResult(cleared){
+  const msgParts = [];
+  if (cleared) {
+    msgParts.push("★ GOAL!\n");
+  } else {
+    msgParts.push("✖ TIME UP\n");
+  }
+  msgParts.push("Wheelie Time: " + wheelieTime.toFixed(2) + " sec");
+  msgParts.push("Damage: " + Math.round(damage) + "%");
+  msgParts.push("Distance: " + Math.min(position.z, goalDistance).toFixed(1) + " / " + goalDistance);
+  alert(msgParts.join("\n"));
+  // restart option
+  if (confirm("Retry?")) {
+    startGame();
+  }
+}
+
+</script>
+</body>
+</html>
