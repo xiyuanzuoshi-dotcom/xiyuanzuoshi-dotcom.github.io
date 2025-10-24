@@ -1,0 +1,31 @@
+html,body{
+    height:100%;margin:0;
+    background:#071018;color:#e6f7ff;
+    font-family:sans-serif;
+    touch-action:none;
+    overscroll-behavior:none;
+  }
+  canvas{
+    image-rendering:pixelated;
+    border:6px solid #111;
+    background:#071018;
+    display:block;
+    margin:20px auto;
+    touch-action:none;
+  }
+  #dialog{
+    position:fixed;
+    left:50%;
+    transform:translateX(-50%);
+    bottom:140px;
+    max-width:94%;
+    background:rgba(0,0,0,0.9);
+    color:#fff;
+    border:3px solid #333;
+    padding:12px 14px;
+    border-radius:10px;
+    font-size:16px;
+    display:none;
+    transition:opacity 0.3s;
+  }
+  

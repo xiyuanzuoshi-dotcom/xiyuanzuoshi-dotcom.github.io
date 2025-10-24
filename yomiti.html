@@ -51,10 +51,10 @@ const ctx=canvas.getContext("2d");
 const world=[
  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,2,2,0,0,2,2,0,0,2,2,0,0,0,0,2,2,0,1],
- [1,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
- [1,0,0,0,0,0,0,0,2,2,0,0,0,0,2,2,0,0,0,1],
- [1,0,0,0,0,2,2,0,0,0,0,2,2,0,0,0,0,0,0,1],
+ [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+ [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+ [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+ [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
@@ -73,14 +73,16 @@ const camera={x:0,y:0};
 const npcs=[
   {x:12,y:6,px:12*TILE,py:6*TILE,text:[
     "うぅ…ふらふら…",
-    "今日も飲みすぎた…頭痛い…",
-    "さっき歩いていた優しそうなお姉ちゃんは",
-    "何を探していたんだろう?"
+    "こんな夜道で倒れちゃって…",
+    "だれか助けてくれ…"
   ]}
 ];
 
 // === アイテム: 光る貝殻のオルゴール ===
 let item = {x:8, y:5, collected:false, name:"光る貝殻のオルゴール"};
+
+// 竜はこのマップでは出現させない
+let dragon = {x:0, y:0, visible:false, size:2};
 
 // 以下、既存コードは変更せずそのまま利用
 const dialog=document.getElementById("dialog");
@@ -188,6 +190,21 @@ function nextDialog(){
   if(dialogIndex<activeNPC.text.length)showDialog(activeNPC.text[dialogIndex]);
   else {hideDialog();activeNPC=null;}
 }
+
+/* === 長押しでキャンセル === */
+let holdTimer=null;
+let isHolding=false;
+dialog.addEventListener("touchstart",()=>{
+  isHolding=false;
+  holdTimer=setTimeout(()=>{
+    isHolding=true;
+    hideDialog();activeNPC=null;
+  },600);
+});
+dialog.addEventListener("touchend",()=>{
+  if(holdTimer){clearTimeout(holdTimer);}
+  if(!isHolding)nextDialog();
+});
 
 /* === スワイプ操作 === */
 canvas.addEventListener("touchstart",e=>{
