@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Wheelie Run - Curved Track + Items</title>
+<style>
+  html,body { margin:0; padding:0; height:100%; overflow:hidden; background:#111; color:#fff; font-family:sans-serif; }
+  #container { width:100%; height:100%; display:block; position:relative; }
+  #hud {
+    position:absolute; top:10px; left:10px; z-index:10; background:rgba(0,0,0,0.35);
+    padding:8px 10px; border-radius:8px;
+  }
+  #hud div { margin:4px 0; font-size:14px; }
+  #controls {
+    position:absolute; right:10px; bottom:10px; z-index:10; display:flex; gap:8px;
+  }
+  .btn {
+    width:80px; height:48px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    background:rgba(255,255,255,0.08); color:#fff; font-size:14px; user-select:none;
+  }
+  #permission {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:20;
+    background:#222; border:2px solid #444; padding:16px; border-radius:10px;
+    display:flex; flex-direction:column; gap:10px; align-items:center;
+  }
+  #startBtn { padding:8px 12px; border-radius:6px; background:#2a9d8f; border:none; color:white; font-weight:600; }
+</style>
+</head>
+<body>
+<div id="container"></div>
+
+<div id="hud">
+  <div>Time: <span id="timer">--</span></div>
+  <div>Speed: <span id="speed">0</span> m/s</div>
+  <div>Wheelie(sec): <span id="wheelieTime">0.00</span></div>
+  <div>Damage: <span id="damage">0</span>%</div>
+  <div>Items: <span id="items">0</span></div>
+</div>
+
+<div id="controls">
+  <div id="brake" class="btn">BRAKE</div>
+  <div id="accel" class="btn">ACCEL</div>
+</div>
+
+<div id="permission">
+  <div style="font-size:16px; font-weight:600;">Enable Motion Input</div>
+  <div style="font-size:13px; color:#ccc; text-align:center; max-width:260px;">
+    This demo uses device orientation. On iOS you must allow motion & orientation. After granting, press START.
+  </div>
+  <button id="requestMotion" class="btn" style="background:#e76f51; border:none; width:180px;">Request Motion</button>
+  <button id="startBtn" disabled>START</button>
+</div>
+
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script>
+let scene, camera, renderer, bike, road, trackCurve;
+let items = [], obstacles = [];
+let clock = new THREE.Clock();
+let running = false;
+let position = { z:0, offsetX:0 };
+let input = { accel:false, brake:false, gamma:0, beta:0 };
+let timer=60, speed=0, baseSpeed=12, accelPower=6, brakePower=10, damage=0, itemCount=0, wheelieTime=0;
+let fallCooldown=0;
+
+// HUD
+const HUD = {
+  timer: document.getElementById('timer'),
+  speed: document.getElementById('speed'),
+  wheelie: document.getElementById('wheelieTime'),
+  damage: document.getElementById('damage'),
+  items: document.getElementById('items')
+};
+
+// permission
+const permissionUI = document.getElementById('permission');
+document.getElementById('requestMotion').addEventListener('click', async ()=>{
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    const res = await DeviceMotionEvent.requestPermission();
+    if (res === 'granted') document.getElementById('startBtn').disabled = false;
+  } else document.getElementById('startBtn').disabled = false;
+});
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  permissionUI.style.display='none';
+  init();
+  animate();
+  startGame();
+});
+
+// controls
+document.getElementById('accel').addEventListener('touchstart', ()=>input.accel=true);
+document.getElementById('accel').addEventListener('touchend', ()=>input.accel=false);
+document.getElementById('brake').addEventListener('touchstart', ()=>input.brake=true);
+document.getElementById('brake').addEventListener('touchend', ()=>input.brake=false);
+window.addEventListener('deviceorientation', e=>{
+  input.gamma = e.gamma || 0;
+  input.beta = e.beta || 0;
+}, true);
+
+// init
+function init(){
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 2000);
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth, innerHeight);
+  document.getElementById('container').appendChild(renderer.domElement);
+
+  const hemi = new THREE.HemisphereLight(0xffffff,0x444444,1.2);
+  scene.add(hemi);
+
+  trackCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0,0,0),
+    new THREE.Vector3(8,0,200),
+    new THREE.Vector3(-6,0,400),
+    new THREE.Vector3(5,0,600),
+    new THREE.Vector3(0,0,800),
+    new THREE.Vector3(4,0,1000)
+  ]);
+  const roadGeo = new THREE.TubeGeometry(trackCurve, 300, 4, 16, false);
+  road = new THREE.Mesh(roadGeo, new THREE.MeshStandardMaterial({color:0x333333}));
+  scene.add(road);
+
+  const bikeGeo = new THREE.BoxGeometry(0.6,0.6,1.6);
+  const bikeMat = new THREE.MeshStandardMaterial({color:0x2a9d8f});
+  bike = new THREE.Mesh(bikeGeo, bikeMat);
+  scene.add(bike);
+
+  // === アイテム配置 ===
+  for(let i=0;i<10;i++){
+    const t = i*0.09 + 0.05;
+    const p = trackCurve.getPointAt(t);
+    const normal = new THREE.Vector3().randomDirection().setY(0).normalize();
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3,16,16),
+      new THREE.MeshStandardMaterial({color:0x00ffff, emissive:0x0088aa})
+    );
+    mesh.position.copy(p.clone().add(normal.multiplyScalar(1.5)));
+    items.push(mesh);
+    scene.add(mesh);
+  }
+
+  // === 障害物配置 ===
+  for(let i=0;i<6;i++){
+    const t = i*0.14 + 0.08;
+    const p = trackCurve.getPointAt(t);
+    const normal = new THREE.Vector3(Math.random()-0.5,0,Math.random()-0.5).normalize();
+    const box = new THREE.Mesh(
+      new THREE.BoxGeometry(1,1,1),
+      new THREE.MeshStandardMaterial({color:0xff5555})
+    );
+    box.position.copy(p.clone().add(normal.multiplyScalar(1.2)));
+    obstacles.push(box);
+    scene.add(box);
+  }
+
+  window.addEventListener('resize', ()=>{
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+}
+
+function startGame(){
+  running=true;
+  position.z=0; position.offsetX=0;
+  speed=0; damage=0; itemCount=0; timer=60; wheelieTime=0;
+}
+
+// update
+function update(dt){
+  timer-=dt;
+  if(timer<=0){ timer=0; running=false; showResult(false); }
+
+  // accel/brake
+  if(input.accel) speed += accelPower*dt;
+  else speed -= 2*dt;
+  if(input.brake) speed -= brakePower*dt;
+  speed=Math.max(0,Math.min(baseSpeed,speed));
+
+  // 曲線移動
+  position.z += speed*dt*10;
+  const t = Math.min(position.z/1000,1.0);
+  const point = trackCurve.getPointAt(t);
+  const tangent = trackCurve.getTangentAt(t);
+
+  // 横移動
+  position.offsetX += -input.gamma*0.008;
+  position.offsetX = THREE.MathUtils.clamp(position.offsetX,-1.5,1.5);
+  const binormals = trackCurve.computeFrenetFrames(300,false).binormals;
+  const binormal = binormals[Math.floor(t*300)] || new THREE.Vector3(1,0,0);
+  const normal = new THREE.Vector3().crossVectors(tangent,binormal);
+  const bikePos = point.clone().add(normal.clone().multiplyScalar(position.offsetX));
+  bikePos.y += 0.6;
+  bike.position.copy(bikePos);
+  bike.lookAt(point.clone().add(tangent));
+
+  const camOffset = tangent.clone().multiplyScalar(-8).add(new THREE.Vector3(0,4,0));
+  camera.position.copy(point.clone().add(camOffset));
+  camera.lookAt(point.clone().add(tangent));
+
+  // wheelie
+  if(input.beta < -12 && speed>3){ wheelieTime+=dt; }
+  if(input.beta < -45 && fallCooldown<=0) applyFall();
+
+  // アイテム当たり判定
+  items.forEach(obj=>{
+    if(!obj.userData.collected && bike.position.distanceTo(obj.position)<1.2){
+      obj.userData.collected=true;
+      obj.material.color.setHex(0x444444);
+      itemCount++;
+    }
+  });
+
+  // 障害物当たり判定
+  obstacles.forEach(o=>{
+    if(bike.position.distanceTo(o.position)<1.2 && fallCooldown<=0){
+      applyFall();
+    }
+  });
+
+  // 更新
+  HUD.timer.textContent = timer.toFixed(2);
+  HUD.speed.textContent = speed.toFixed(1);
+  HUD.wheelie.textContent = wheelieTime.toFixed(2);
+  HUD.damage.textContent = Math.round(damage);
+  HUD.items.textContent = itemCount;
+
+  if(t>=1.0){ running=false; showResult(true); }
+  if(fallCooldown>0) fallCooldown-=dt;
+}
+
+function applyFall(){
+  timer=Math.max(0,timer-3);
+  damage+=8; damage=Math.min(100,damage);
+  speed*=0.5;
+  fallCooldown=1.5;
+  bike.material.color.setHex(0xffb703);
+  setTimeout(()=>bike.material.color.setHex(0x2a9d8f),600);
+}
+
+function showResult(cleared){
+  const msg = cleared ? "★ GOAL!\n":"✖ TIME UP\n";
+  alert(msg+"Items: "+itemCount+"\nWheelie: "+wheelieTime.toFixed(2)+"s\nDamage: "+Math.round(damage)+"%");
+  if(confirm("Retry?")) startGame();
+}
+
+// animate
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.05);
+  if(running) update(dt);
+  renderer.render(scene,camera);
+}
+</script>
+</body>
+</html>
