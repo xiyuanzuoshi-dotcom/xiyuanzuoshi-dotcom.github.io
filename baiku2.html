@@ -3,26 +3,30 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Wheelie Run - Curved Track Edition</title>
+<title>Wheelie Run - Curved Track</title>
 <style>
-  html,body { margin:0; padding:0; height:100%; overflow:hidden; background:#111; color:#fff; font-family:sans-serif; }
-  #container { width:100%; height:100%; position:relative; }
-  #hud { position:absolute; top:10px; left:10px; z-index:10; background:rgba(0,0,0,0.4); padding:8px 12px; border-radius:8px; }
+  html,body { margin:0; padding:0; height:100%; overflow:hidden; font-family:sans-serif; background:#111; color:#fff;}
+  #container { width:100%; height:100%; display:block; position:relative; }
+  #hud {
+    position:absolute; top:10px; left:10px; z-index:10; background:rgba(0,0,0,0.35);
+    padding:8px 10px; border-radius:8px;
+  }
   #hud div { margin:4px 0; font-size:14px; }
-  #controls { position:absolute; right:10px; bottom:10px; z-index:10; display:flex; gap:8px; }
+  #controls {
+    position:absolute; right:10px; bottom:10px; z-index:10; display:flex; gap:8px;
+  }
   .btn {
     width:80px; height:48px; border-radius:8px; display:flex; align-items:center; justify-content:center;
-    background:rgba(255,255,255,0.1); color:#fff; font-size:14px; user-select:none;
+    background:rgba(255,255,255,0.08); color:#fff; font-size:14px; user-select:none;
   }
   #permission {
     position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:20;
     background:#222; border:2px solid #444; padding:16px; border-radius:10px;
     display:flex; flex-direction:column; gap:10px; align-items:center;
   }
-  #message {
-    position:absolute; left:50%; top:60%; transform:translateX(-50%);
-    background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:8px; z-index:20;
-  }
+  #message { position:absolute; left:50%; top:60%; transform:translateX(-50%); z-index:20;
+    background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:8px; }
+  #startBtn { padding:8px 12px; border-radius:6px; background:#2a9d8f; border:none; color:white; font-weight:600; }
 </style>
 </head>
 <body>
@@ -30,7 +34,6 @@
 
 <div id="hud">
   <div>Time: <span id="timer">--</span></div>
-  <div>Distance: <span id="distance">0</span> / <span id="goalDist">500</span></div>
   <div>Speed: <span id="speed">0</span> m/s</div>
   <div>Wheelie(sec): <span id="wheelieTime">0.00</span></div>
   <div>Damage: <span id="damage">0</span>%</div>
@@ -50,45 +53,41 @@
   <button id="startBtn" disabled>START</button>
 </div>
 
-<div id="message" style="display:none;">Tilt left/right to steer. Tilt back for wheelie. Tap BRAKE/ACCEL.</div>
+<div id="message" style="display:none;">Tilt phone to steer, tilt back for wheelie.</div>
 
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script>
 let scene, camera, renderer;
-let bike, roadMesh, leftWall, rightWall;
+let bike, road, trackCurve;
 let clock = new THREE.Clock();
+let container = document.getElementById('container');
 
-const container = document.getElementById('container');
+// HUD
 const HUD = {
   timerEl: document.getElementById('timer'),
-  distanceEl: document.getElementById('distance'),
-  goalDistEl: document.getElementById('goalDist'),
   speedEl: document.getElementById('speed'),
   wheelieEl: document.getElementById('wheelieTime'),
   damageEl: document.getElementById('damage'),
 };
 
-// === Parameters ===
+// game vars
 let baseSpeed = 12.0;
 let speed = 0;
-let accelPower = 8.0;
+let accelPower = 6.0;
 let brakePower = 10.0;
-let steerSensitivity = 0.05;
-let roadHalfWidth = 4.5;
-let position = { x:0, z:0 };
-let goalDistance = 500;
+let steerSensitivity = 0.008; // tiltによる横移動の強さ
 let timer = 60;
 let running = false;
 let wheelieTime = 0;
 let damage = 0;
-let lastCollisionAt = -999;
-let collisionCooldown = 1.0;
+let position = { z: 0, offsetX: 0 };
+let wheelieActive = false;
 let fallCooldown = 0;
+
+// input
 let input = { accel:false, brake:false, gamma:0, beta:0 };
 
-HUD.goalDistEl.innerText = goalDistance;
-
-// === Permission ===
+// === permission ===
 const permissionUI = document.getElementById('permission');
 const startBtn = document.getElementById('startBtn');
 const requestMotion = document.getElementById('requestMotion');
@@ -100,86 +99,66 @@ requestMotion.addEventListener('click', async ()=>{
         startBtn.disabled = false;
         requestMotion.innerText = 'Permission Granted ✅';
       }
-    } catch(e){ startBtn.disabled = true; }
+    } catch {
+      startBtn.disabled = false;
+    }
   } else {
     startBtn.disabled = false;
     requestMotion.innerText = 'OK';
   }
 });
 startBtn.addEventListener('click', ()=>{
-  permissionUI.style.display='none';
-  document.getElementById('message').style.display='block';
+  permissionUI.style.display = 'none';
+  document.getElementById('message').style.display = 'block';
   init();
   animate();
   startGame();
 });
 
-// === Controls ===
-function setAccel(state){ input.accel = state; }
-function setBrake(state){ input.brake = state; }
+// controls
+document.getElementById('accel').addEventListener('touchstart', e=>{e.preventDefault(); input.accel=true;});
+document.getElementById('accel').addEventListener('touchend', e=>{e.preventDefault(); input.accel=false;});
+document.getElementById('brake').addEventListener('touchstart', e=>{e.preventDefault(); input.brake=true;});
+document.getElementById('brake').addEventListener('touchend', e=>{e.preventDefault(); input.brake=false;});
 
-const accelBtn = document.getElementById('accel');
-const brakeBtn = document.getElementById('brake');
-
-['touchstart','mousedown'].forEach(ev => accelBtn.addEventListener(ev, e=>{ e.preventDefault(); setAccel(true); }));
-['touchend','mouseup','mouseleave'].forEach(ev => accelBtn.addEventListener(ev, e=>{ e.preventDefault(); setAccel(false); }));
-['touchstart','mousedown'].forEach(ev => brakeBtn.addEventListener(ev, e=>{ e.preventDefault(); setBrake(true); }));
-['touchend','mouseup','mouseleave'].forEach(ev => brakeBtn.addEventListener(ev, e=>{ e.preventDefault(); setBrake(false); }));
-
-// === Orientation ===
 window.addEventListener('deviceorientation', e=>{
-  input.gamma = e.gamma||0;
-  input.beta = e.beta||0;
+  input.gamma = e.gamma || 0;
+  input.beta = e.beta || 0;
 }, true);
 
-// === Curve ===
-let curve;
-function createCurve(){
-  const points = [];
-  const amp = 15; // カーブの強さ
-  for(let z=0; z<=goalDistance; z+=20){
-    // S字の自然なコース
-    const x = Math.sin(z/90) * amp * Math.sin(z/200);
-    points.push(new THREE.Vector3(x, 0, z));
-  }
-  curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
-}
-
-// === Scene ===
+// === init three ===
 function init(){
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x222222);
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 2000);
   camera.position.set(0,4,-8);
-
   renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   container.appendChild(renderer.domElement);
 
-  const hemi = new THREE.HemisphereLight(0xffffff,0x555555,1.2);
+  // light
+  const hemi = new THREE.HemisphereLight(0xffffff,0x444444,1.2);
   scene.add(hemi);
   const dir = new THREE.DirectionalLight(0xffffff,0.6);
   dir.position.set(5,10,7);
   scene.add(dir);
 
-  createCurve();
+  // ==== 曲がったコース ====
+  trackCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0,0,0),
+    new THREE.Vector3(6,0,200),
+    new THREE.Vector3(-8,0,400),
+    new THREE.Vector3(4,0,600),
+    new THREE.Vector3(0,0,800),
+    new THREE.Vector3(5,0,1000)
+  ]);
+  const tubeGeo = new THREE.TubeGeometry(trackCurve, 300, 4, 16, false);
+  const tubeMat = new THREE.MeshStandardMaterial({color:0x333333, side:THREE.DoubleSide});
+  road = new THREE.Mesh(tubeGeo, tubeMat);
+  scene.add(road);
 
-  const tube = new THREE.TubeGeometry(curve, 300, roadHalfWidth, 8, false);
-  const roadMat = new THREE.MeshStandardMaterial({color:0x444444, metalness:0.2, roughness:0.7});
-  roadMesh = new THREE.Mesh(tube, roadMat);
-  scene.add(roadMesh);
-
-  const wallMat = new THREE.MeshStandardMaterial({color:0xbb2222});
-  const pts = curve.getPoints(300);
-  const leftPts = pts.map(p => new THREE.Vector3(p.x + roadHalfWidth + 0.4, 0.5, p.z));
-  const rightPts = pts.map(p => new THREE.Vector3(p.x - roadHalfWidth - 0.4, 0.5, p.z));
-  const leftC = new THREE.CatmullRomCurve3(leftPts);
-  const rightC = new THREE.CatmullRomCurve3(rightPts);
-  leftWall = new THREE.Mesh(new THREE.TubeGeometry(leftC, 300, 0.25, 6, false), wallMat);
-  rightWall = new THREE.Mesh(new THREE.TubeGeometry(rightC, 300, 0.25, 6, false), wallMat);
-  scene.add(leftWall); scene.add(rightWall);
-
+  // bike
   const bikeGeo = new THREE.BoxGeometry(0.6,0.6,1.6);
   const bikeMat = new THREE.MeshStandardMaterial({color:0x2a9d8f});
   bike = new THREE.Mesh(bikeGeo, bikeMat);
@@ -192,348 +171,99 @@ function init(){
   });
 }
 
+// === game start ===
 function startGame(){
   running = true;
-  position = {x:0,z:0};
+  position.z = 0;
   speed = 0;
   timer = 60;
-  damage = 0;
   wheelieTime = 0;
+  damage = 0;
 }
 
+// === animate ===
 function animate(){
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const dt = Math.min(clock.getDelta(),0.05);
   if(running) update(dt);
-  renderer.render(scene,camera);
+  renderer.render(scene, camera);
 }
 
+// === update ===
 function update(dt){
+  // timer
   timer -= dt;
   if(timer<=0){ timer=0; running=false; showResult(false); }
 
-  const damageFactor = Math.min(damage/100,0.9);
-  const maxSpeed = baseSpeed*(1-damageFactor);
+  // accel/brake
   if(input.accel) speed += accelPower*dt;
+  else speed -= 2.0*dt;
   if(input.brake) speed -= brakePower*dt;
-  speed = Math.max(0, Math.min(maxSpeed,speed));
+  speed = Math.max(0, Math.min(baseSpeed, speed));
 
-  position.z += speed*dt*10;
-  const t = Math.min(position.z/goalDistance,1);
-  const curvePos = curve.getPointAt(t);
-  const curveTan = curve.getTangentAt(t);
-  const normal = new THREE.Vector3(-curveTan.z,0,curveTan.x).normalize();
+  // 曲線に沿って移動
+  position.z += speed * dt * 10;
+  const trackLen = 1000;
+  const t = Math.min(position.z/trackLen,1.0);
+  const point = trackCurve.getPointAt(t);
+  const tangent = trackCurve.getTangentAt(t);
 
-  position.x += (-input.gamma*steerSensitivity)*dt*60;
-  const xOffset = THREE.MathUtils.clamp(position.x, -roadHalfWidth, roadHalfWidth);
-  const finalPos = curvePos.clone().add(normal.clone().multiplyScalar(xOffset));
+  // 横移動（γで左右スライド）
+  position.offsetX += -input.gamma * steerSensitivity;
+  position.offsetX = THREE.MathUtils.clamp(position.offsetX, -1.5, 1.5);
 
-  bike.position.copy(finalPos);
-  bike.lookAt(curvePos.clone().add(curveTan));
-  camera.position.lerp(finalPos.clone().add(new THREE.Vector3(0,4,-8).applyQuaternion(bike.quaternion)),0.1);
-  camera.lookAt(bike.position.clone().add(curveTan.clone().multiplyScalar(3)));
+  // 法線方向取得（左右方向ベクトル）
+  const normal = new THREE.Vector3();
+  const binormal = new THREE.Vector3();
+  const tmp = new THREE.Vector3();
+  trackCurve.computeFrenetFrames(300, false).binormals[ Math.floor(t*300) ].clone(tmp);
+  binormal.copy(tmp);
+  normal.crossVectors(tangent, binormal);
 
-  // 壁衝突
-  if(Math.abs(position.x) >= roadHalfWidth){
-    const now = performance.now()/1000;
-    if(now - lastCollisionAt > collisionCooldown){
-      lastCollisionAt = now;
-      applyCollision();
-    }
-    position.x = THREE.MathUtils.clamp(position.x, -roadHalfWidth, roadHalfWidth);
-    speed*=0.6;
-  }
+  // バイク位置 = コース上の点 + 横方向オフセット
+  const bikePos = point.clone().add(normal.clone().multiplyScalar(position.offsetX));
+  bikePos.y += 0.6;
+  bike.position.copy(bikePos);
 
+  // バイクの向き
+  bike.lookAt(point.clone().add(tangent));
+
+  // カメラ追従
+  const camOffset = tangent.clone().multiplyScalar(-8).add(new THREE.Vector3(0,4,0));
+  camera.position.copy(point.clone().add(camOffset));
+  camera.lookAt(point.clone().add(tangent));
+
+  // wheelie
+  const wheelieThreshold = -12, wheelieMax = -45;
+  if(input.beta < wheelieThreshold && speed>3){ wheelieActive=true; wheelieTime+=dt; }
+  else wheelieActive=false;
+  if(input.beta < wheelieMax && fallCooldown<=0) applyFall();
+
+  // HUD更新
   HUD.timerEl.innerText = timer.toFixed(2);
-  HUD.distanceEl.innerText = position.z.toFixed(1);
-  HUD.speedEl.innerText = speed.toFixed(2);
+  HUD.speedEl.innerText = speed.toFixed(1);
   HUD.wheelieEl.innerText = wheelieTime.toFixed(2);
   HUD.damageEl.innerText = Math.round(damage);
 
-  if(position.z >= goalDistance){ running=false; showResult(true); }
+  if(t>=1.0){ running=false; showResult(true); }
+  if(fallCooldown>0) fallCooldown-=dt;
 }
 
-function applyCollision(){
-  timer = Math.max(0,timer-3);
-  damage = Math.min(100,damage+12);
-  bike.material.color.setHex(0xff6b6b);
-  setTimeout(()=>bike.material.color.setHex(0x2a9d8f),300);
-  position.z = Math.max(0, position.z-4);
-}
-
-function showResult(cleared){
-  const msg = cleared ? "★ GOAL!" : "✖ TIME UP";
-  alert(`${msg}\nWheelie: ${wheelieTime.toFixed(2)}s\nDamage:${Math.round(damage)}%`);
-  if(confirm("Retry?")) startGame();
-}
-</script>
-</body>
-</html>
-<!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Wheelie Run - Curved Track Edition (Stable)</title>
-<style>
-  html,body { margin:0; padding:0; height:100%; overflow:hidden; background:#111; color:#fff; font-family:sans-serif; }
-  #container { width:100%; height:100%; position:relative; }
-  #hud { position:absolute; top:10px; left:10px; z-index:10; background:rgba(0,0,0,0.4); padding:8px 12px; border-radius:8px; }
-  #hud div { margin:4px 0; font-size:14px; }
-  #controls { position:absolute; right:10px; bottom:10px; z-index:10; display:flex; gap:8px; }
-  .btn {
-    width:80px; height:48px; border-radius:8px; display:flex; align-items:center; justify-content:center;
-    background:rgba(255,255,255,0.1); color:#fff; font-size:14px; user-select:none;
-  }
-  #permission {
-    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:20;
-    background:#222; border:2px solid #444; padding:16px; border-radius:10px;
-    display:flex; flex-direction:column; gap:10px; align-items:center;
-  }
-  #message {
-    position:absolute; left:50%; top:60%; transform:translateX(-50%);
-    background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:8px; z-index:20;
-  }
-</style>
-</head>
-<body>
-<div id="container"></div>
-
-<div id="hud">
-  <div>Time: <span id="timer">--</span></div>
-  <div>Distance: <span id="distance">0</span> / <span id="goalDist">500</span></div>
-  <div>Speed: <span id="speed">0</span> m/s</div>
-  <div>Wheelie(sec): <span id="wheelieTime">0.00</span></div>
-  <div>Damage: <span id="damage">0</span>%</div>
-</div>
-
-<div id="controls">
-  <div id="brake" class="btn">BRAKE</div>
-  <div id="accel" class="btn">ACCEL</div>
-</div>
-
-<div id="permission">
-  <div style="font-size:16px; font-weight:600;">Enable Motion Input</div>
-  <div style="font-size:13px; color:#ccc; text-align:center; max-width:260px;">
-    This demo uses device orientation. On iOS you must allow motion & orientation. After granting, press START.
-  </div>
-  <button id="requestMotion" class="btn" style="background:#e76f51; border:none; width:180px;">Request Motion</button>
-  <button id="startBtn" disabled>START</button>
-</div>
-
-<div id="message" style="display:none;">Tilt left/right to steer. Tilt back for wheelie. Tap BRAKE/ACCEL.</div>
-
-<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-<script>
-let scene, camera, renderer;
-let bike, roadMesh, leftWall, rightWall;
-let clock = new THREE.Clock();
-
-const container = document.getElementById('container');
-const HUD = {
-  timerEl: document.getElementById('timer'),
-  distanceEl: document.getElementById('distance'),
-  goalDistEl: document.getElementById('goalDist'),
-  speedEl: document.getElementById('speed'),
-  wheelieEl: document.getElementById('wheelieTime'),
-  damageEl: document.getElementById('damage'),
-};
-
-// === Parameters ===
-let baseSpeed = 12.0;
-let speed = 0;
-let accelPower = 8.0;
-let brakePower = 10.0;
-let steerSensitivity = 0.02; // ← 操作感を落とす
-let roadHalfWidth = 4.5;
-let position = { x:0, z:0 };
-let goalDistance = 500;
-let timer = 60;
-let running = false;
-let wheelieTime = 0;
-let damage = 0;
-let lastCollisionAt = -999;
-let collisionCooldown = 1.0;
-let input = { accel:false, brake:false, gamma:0, beta:0 };
-let smoothedGamma = 0; // ← スムージング用
-
-HUD.goalDistEl.innerText = goalDistance;
-
-// === Permission ===
-const permissionUI = document.getElementById('permission');
-const startBtn = document.getElementById('startBtn');
-const requestMotion = document.getElementById('requestMotion');
-requestMotion.addEventListener('click', async ()=>{
-  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-    try {
-      const res = await DeviceMotionEvent.requestPermission();
-      if (res === 'granted') {
-        startBtn.disabled = false;
-        requestMotion.innerText = 'Permission Granted ✅';
-      }
-    } catch(e){ startBtn.disabled = true; }
-  } else {
-    startBtn.disabled = false;
-    requestMotion.innerText = 'OK';
-  }
-});
-startBtn.addEventListener('click', ()=>{
-  permissionUI.style.display='none';
-  document.getElementById('message').style.display='block';
-  init();
-  animate();
-  startGame();
-});
-
-// === Controls ===
-function setAccel(state){ input.accel = state; }
-function setBrake(state){ input.brake = state; }
-
-const accelBtn = document.getElementById('accel');
-const brakeBtn = document.getElementById('brake');
-['touchstart','mousedown'].forEach(ev => accelBtn.addEventListener(ev, e=>{ e.preventDefault(); setAccel(true); }));
-['touchend','mouseup','mouseleave'].forEach(ev => accelBtn.addEventListener(ev, e=>{ e.preventDefault(); setAccel(false); }));
-['touchstart','mousedown'].forEach(ev => brakeBtn.addEventListener(ev, e=>{ e.preventDefault(); setBrake(true); }));
-['touchend','mouseup','mouseleave'].forEach(ev => brakeBtn.addEventListener(ev, e=>{ e.preventDefault(); setBrake(false); }));
-
-// === Orientation ===
-window.addEventListener('deviceorientation', e=>{
-  if(e.gamma !== null) input.gamma = e.gamma;
-  if(e.beta !== null) input.beta = e.beta;
-}, true);
-
-// === Curve ===
-let curve;
-function createCurve(){
-  const points = [];
-  const amp = 15;
-  for(let z=0; z<=goalDistance; z+=20){
-    const x = Math.sin(z/90) * amp * Math.sin(z/200);
-    points.push(new THREE.Vector3(x, 0, z));
-  }
-  curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
-}
-
-// === Scene ===
-function init(){
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x222222);
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 2000);
-  camera.position.set(0,4,-8);
-  renderer = new THREE.WebGLRenderer({antialias:true});
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  container.appendChild(renderer.domElement);
-
-  scene.add(new THREE.HemisphereLight(0xffffff,0x555555,1.2));
-  const dir = new THREE.DirectionalLight(0xffffff,0.6);
-  dir.position.set(5,10,7);
-  scene.add(dir);
-
-  createCurve();
-  const tube = new THREE.TubeGeometry(curve, 300, roadHalfWidth, 8, false);
-  const roadMat = new THREE.MeshStandardMaterial({color:0x444444, roughness:0.7});
-  roadMesh = new THREE.Mesh(tube, roadMat);
-  scene.add(roadMesh);
-
-  const wallMat = new THREE.MeshStandardMaterial({color:0xbb2222});
-  const pts = curve.getPoints(300);
-  const leftPts = pts.map(p => new THREE.Vector3(p.x + roadHalfWidth + 0.4, 0.5, p.z));
-  const rightPts = pts.map(p => new THREE.Vector3(p.x - roadHalfWidth - 0.4, 0.5, p.z));
-  const leftC = new THREE.CatmullRomCurve3(leftPts);
-  const rightC = new THREE.CatmullRomCurve3(rightPts);
-  leftWall = new THREE.Mesh(new THREE.TubeGeometry(leftC, 300, 0.25, 6, false), wallMat);
-  rightWall = new THREE.Mesh(new THREE.TubeGeometry(rightC, 300, 0.25, 6, false), wallMat);
-  scene.add(leftWall,rightWall);
-
-  const bikeGeo = new THREE.BoxGeometry(0.6,0.6,1.6);
-  const bikeMat = new THREE.MeshStandardMaterial({color:0x2a9d8f});
-  bike = new THREE.Mesh(bikeGeo,bikeMat);
-  scene.add(bike);
-
-  window.addEventListener('resize', ()=>{
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-}
-
-function startGame(){
-  running = true;
-  position = {x:0,z:0};
-  speed = 0;
-  timer = 60;
-  damage = 0;
-  wheelieTime = 0;
-}
-
-function animate(){
-  requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
-  if(running) update(dt);
-  renderer.render(scene,camera);
-}
-
-function update(dt){
-  timer -= dt;
-  if(timer<=0){ timer=0; running=false; showResult(false); }
-
-  // --- 傾きスムージング ---
-  smoothedGamma = smoothedGamma * 0.9 + input.gamma * 0.1;
-
-  const damageFactor = Math.min(damage/100,0.9);
-  const maxSpeed = baseSpeed*(1-damageFactor);
-  if(input.accel) speed += accelPower*dt;
-  if(input.brake) speed -= brakePower*dt;
-  speed = Math.max(0, Math.min(maxSpeed,speed));
-
-  position.z += speed*dt*10;
-  const t = Math.min(position.z/goalDistance,1);
-  const curvePos = curve.getPointAt(t);
-  const curveTan = curve.getTangentAt(t);
-  const normal = new THREE.Vector3(-curveTan.z,0,curveTan.x).normalize();
-
-  // --- ステアリング ---
-  const steer = THREE.MathUtils.clamp(-smoothedGamma * steerSensitivity, -0.15, 0.15);
-  position.x += steer * dt * 60;
-  position.x = THREE.MathUtils.clamp(position.x, -roadHalfWidth, roadHalfWidth);
-
-  const finalPos = curvePos.clone().add(normal.clone().multiplyScalar(position.x));
-  bike.position.copy(finalPos);
-  bike.lookAt(curvePos.clone().add(curveTan));
-
-  camera.position.lerp(finalPos.clone().add(new THREE.Vector3(0,4,-8).applyQuaternion(bike.quaternion)),0.1);
-  camera.lookAt(bike.position.clone().add(curveTan.clone().multiplyScalar(3)));
-
-  // 壁衝突
-  if(Math.abs(position.x) >= roadHalfWidth-0.1){
-    const now = performance.now()/1000;
-    if(now - lastCollisionAt > collisionCooldown){
-      lastCollisionAt = now;
-      applyCollision();
-    }
-    speed*=0.6;
-  }
-
-  HUD.timerEl.innerText = timer.toFixed(2);
-  HUD.distanceEl.innerText = position.z.toFixed(1);
-  HUD.speedEl.innerText = speed.toFixed(2);
-  HUD.wheelieEl.innerText = wheelieTime.toFixed(2);
-  HUD.damageEl.innerText = Math.round(damage);
-
-  if(position.z >= goalDistance){ running=false; showResult(true); }
-}
-
-function applyCollision(){
-  timer = Math.max(0,timer-3);
-  damage = Math.min(100,damage+12);
-  bike.material.color.setHex(0xff6b6b);
-  setTimeout(()=>bike.material.color.setHex(0x2a9d8f),300);
-  position.z = Math.max(0, position.z-4);
+function applyFall(){
+  const timePenalty=4.0;
+  timer=Math.max(0,timer-timePenalty);
+  damage+=8; damage=Math.min(100,damage);
+  speed*=0.5;
+  fallCooldown=1.5;
+  bike.material.color.setHex(0xffb703);
+  setTimeout(()=> bike.material.color.setHex(0x2a9d8f),600);
 }
 
 function showResult(cleared){
-  const msg = cleared ? "★ GOAL!" : "✖ TIME UP";
-  alert(`${msg}\nWheelie: ${wheelieTime.toFixed(2)}s\nDamage:${Math.round(damage)}%`);
+  let msg = cleared? "★ GOAL!\n":"✖ TIME UP\n";
+  msg += "Wheelie Time: "+wheelieTime.toFixed(2)+" sec\n";
+  msg += "Damage: "+Math.round(damage)+"%";
+  alert(msg);
   if(confirm("Retry?")) startGame();
 }
 </script>
