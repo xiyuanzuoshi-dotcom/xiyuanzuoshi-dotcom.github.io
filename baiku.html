@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Wheelie Run - Prototype</title>
+<title>Bike Run - Simplified</title>
 <style>
   html,body { margin:0; padding:0; height:100%; overflow:hidden; font-family: sans-serif; background:#111; color:#fff;}
   #container { width:100%; height:100%; display:block; position:relative; }
@@ -19,13 +19,10 @@
     background:rgba(255,255,255,0.08); color:#fff; font-size:14px; user-select:none;
     -webkit-user-select:none;
   }
-  #permission {
-    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:20;
-    background:#222; border:2px solid #444; padding:16px; border-radius:10px;
-    display:flex; flex-direction:column; gap:10px; align-items:center;
+  #message { 
+    position:absolute; left:50%; top:60%; transform:translateX(-50%);
+    z-index:20; background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:8px;
   }
-  #message { position:absolute; left:50%; top:60%; transform:translateX(-50%); z-index:20; background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:8px; }
-  #startBtn { padding:8px 12px; border-radius:6px; background:#2a9d8f; border:none; color:white; font-weight:600; }
 </style>
 </head>
 <body>
@@ -35,7 +32,6 @@
   <div>Time: <span id="timer">--</span></div>
   <div>Distance: <span id="distance">0</span> / <span id="goalDist">500</span></div>
   <div>Speed: <span id="speed">0</span> m/s</div>
-  <div>Wheelie(sec): <span id="wheelieTime">0.00</span></div>
   <div>Damage: <span id="damage">0</span>%</div>
 </div>
 
@@ -44,30 +40,12 @@
   <div id="accel" class="btn">ACCEL</div>
 </div>
 
-<div id="permission">
-  <div style="font-size:16px; font-weight:600;">Enable Motion Input</div>
-  <div style="font-size:13px; color:#ccc; text-align:center; max-width:260px;">
-    This demo uses device orientation. On iOS you must allow motion & orientation. After granting, press START.
-  </div>
-  <button id="requestMotion" class="btn" style="background:#e76f51; border:none; width:180px;">Request Motion</button>
-  <button id="startBtn" disabled>START</button>
-</div>
+<div id="message">Tilt left/right to steer. Tap left/right to Brake/Accel.</div>
 
-<div id="message" style="display:none;">Tap left/right side to Brake/Accel. Tilt phone left/right to steer, tilt back for wheelie.</div>
-
-<!-- Three.js CDN -->
+<!-- Three.js -->
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 
 <script>
-/*
-  Prototype: Wheelie Run (Three.js)
-  - tilt left/right (gamma) => steer x
-  - tilt forward/back (beta) => posture (wheelie when leaning back)
-  - accel/brake buttons
-  - walls at sides: collision -> damage + time penalty + speed reduction
-  - no respawn: you continue but with penalties
-*/
-
 let scene, camera, renderer;
 let bike, road, leftWall, rightWall;
 let clock = new THREE.Clock();
@@ -79,7 +57,6 @@ const HUD = {
   distanceEl: document.getElementById('distance'),
   goalDistEl: document.getElementById('goalDist'),
   speedEl: document.getElementById('speed'),
-  wheelieEl: document.getElementById('wheelieTime'),
   damageEl: document.getElementById('damage'),
 };
 
@@ -88,93 +65,52 @@ let baseSpeed = 12.0; // m/s nominal
 let speed = 0;
 let accelPower = 6.0;
 let brakePower = 10.0;
-let steerSensitivity = 0.04; // how much x changes per tilt
+let steerSensitivity = 0.04;
 let roadHalfWidth = 4.0;
-let position = { x:0, z:0 }; // z increasing towards goal
-let goalDistance = 500; // meters
-let timer = 60; // seconds time limit
+let position = { x:0, z:0 };
+let goalDistance = 500;
+let timer = 60;
 let running = false;
-let wheelieTime = 0;
-let damage = 0; // 0..100
+let damage = 0;
 let lastCollisionAt = -999;
-let collisionCooldown = 1.0; // seconds between collisions counted
-let fallCooldown = 0; // after a fall apply brief cooldown
-let wheelieActive = false;
+let collisionCooldown = 1.0;
+let fallCooldown = 0;
 
 // input state
-let input = { accel:false, brake:false, gamma:0, beta:0 };
+let input = { accel:false, brake:false, gamma:0 };
 
-// UI elements
+// UI
 document.getElementById('goalDist').innerText = String(goalDistance);
 
-// permission & start
-const permissionUI = document.getElementById('permission');
-const startBtn = document.getElementById('startBtn');
-const requestMotion = document.getElementById('requestMotion');
-requestMotion.addEventListener('click', async () => {
-  // iOS requires DeviceMotionEvent.requestPermission()
-  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-    try {
-      const res = await DeviceMotionEvent.requestPermission();
-      if (res === 'granted') {
-        startBtn.disabled = false;
-        requestMotion.innerText = 'Permission Granted ✅';
-      } else {
-        requestMotion.innerText = 'Permission Denied';
-      }
-    } catch (e) {
-      console.warn('Permission request failed', e);
-      requestMotion.innerText = 'Permission Failed';
-      startBtn.disabled = false; // try anyway
-    }
-  } else {
-    // non-iOS or already allowed
-    startBtn.disabled = false;
-    requestMotion.innerText = 'OK (no iOS req)';
-  }
-});
-
-startBtn.addEventListener('click', () => {
-  permissionUI.style.display = 'none';
-  document.getElementById('message').style.display = 'block';
-  init();
-  animate();
-  startGame();
-});
-
 // touch controls
-document.getElementById('accel').addEventListener('touchstart', (e)=>{ e.preventDefault(); input.accel = true; });
-document.getElementById('accel').addEventListener('touchend', (e)=>{ e.preventDefault(); input.accel = false; });
-document.getElementById('brake').addEventListener('touchstart', (e)=>{ e.preventDefault(); input.brake = true; });
-document.getElementById('brake').addEventListener('touchend', (e)=>{ e.preventDefault(); input.brake = false; });
+document.getElementById('accel').addEventListener('touchstart', e=>{ e.preventDefault(); input.accel = true; });
+document.getElementById('accel').addEventListener('touchend', e=>{ e.preventDefault(); input.accel = false; });
+document.getElementById('brake').addEventListener('touchstart', e=>{ e.preventDefault(); input.brake = true; });
+document.getElementById('brake').addEventListener('touchend', e=>{ e.preventDefault(); input.brake = false; });
 
-// fallback for desktop: click to toggle accel
+// fallback for desktop
 document.getElementById('accel').addEventListener('click', ()=> input.accel = !input.accel);
 document.getElementById('brake').addEventListener('click', ()=> input.brake = !input.brake);
 
-// device orientation handler
+// device orientation
 function handleOrientation(e) {
-  // e.gamma : left-right tilt, range [-90,90]
-  // e.beta  : front-back tilt, range [-180,180] (front down positive)
   input.gamma = e.gamma || 0;
-  input.beta = e.beta || 0;
 }
 window.addEventListener('deviceorientation', handleOrientation, true);
 
-// init three
+// init
 function init(){
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x222222);
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 2000);
-  camera.position.set(0, 4.0, -8); // behind and above
+  camera.position.set(0, 4.0, -8);
   camera.lookAt(0,1,0);
 
   renderer = new THREE.WebGLRenderer({ antialias:true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   container.appendChild(renderer.domElement);
 
-  // simple lights
   const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
   hemi.position.set(0, 50, 0);
   scene.add(hemi);
@@ -183,15 +119,13 @@ function init(){
   dir.position.set(5,10,7);
   scene.add(dir);
 
-  // road
   const roadGeo = new THREE.PlaneGeometry(20, 2000);
   const roadMat = new THREE.MeshStandardMaterial({ color:0x333333 });
   road = new THREE.Mesh(roadGeo, roadMat);
   road.rotation.x = -Math.PI/2;
-  road.position.z = 1000; // far plane; we'll move bike forward along z
+  road.position.z = 1000;
   scene.add(road);
 
-  // left/right walls (long boxes)
   const wallGeo = new THREE.BoxGeometry(1, 2.5, 2000);
   const wallMat = new THREE.MeshStandardMaterial({ color:0x8b0000 });
   leftWall = new THREE.Mesh(wallGeo, wallMat);
@@ -200,14 +134,12 @@ function init(){
   rightWall.position.set(roadHalfWidth + 0.5, 1.2, 1000);
   scene.add(leftWall); scene.add(rightWall);
 
-  // bike (simple box)
   const bikeGeo = new THREE.BoxGeometry(0.6, 0.6, 1.6);
   const bikeMat = new THREE.MeshStandardMaterial({ color:0x2a9d8f });
   bike = new THREE.Mesh(bikeGeo, bikeMat);
   bike.position.set(0, 0.6, 0);
   scene.add(bike);
 
-  // terrain signage (visual)
   for (let i=0;i<20;i++){
     const small = new THREE.BoxGeometry(0.2,0.5,1);
     const mat = new THREE.MeshStandardMaterial({ color:0xffff00 });
@@ -233,14 +165,12 @@ function startGame(){
   position.x = 0; position.z = 0;
   speed = 0;
   timer = 60;
-  wheelieTime = 0;
   damage = 0;
   lastCollisionAt = -999;
   fallCooldown = 0;
-  wheelieActive = false;
 }
 
-// animate loop
+// animate
 function animate(){
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -249,7 +179,6 @@ function animate(){
 }
 
 function update(dt){
-  // update timer
   timer -= dt;
   if (timer <= 0) {
     timer = 0;
@@ -257,133 +186,69 @@ function update(dt){
     showResult(false);
   }
 
-  // compute target base speed applying damage penalty
-  const damageFactor = Math.min(damage/100, 0.9); // max 90% penalty
+  const damageFactor = Math.min(damage/100, 0.9);
   const effectiveMaxSpeed = baseSpeed * (1 - damageFactor);
-  
-  // accel / brake
-  if (input.accel) {
-    speed += accelPower * dt;
-  } else {
-    // natural decel
-    speed -= 2.0 * dt;
-  }
-  if (input.brake) {
-    speed -= brakePower * dt;
-  }
-  // clamp speed
+
+  if (input.accel) speed += accelPower * dt;
+  else speed -= 2.0 * dt;
+  if (input.brake) speed -= brakePower * dt;
   speed = Math.max(0, Math.min(effectiveMaxSpeed, speed));
 
-  // steering: use gamma (left-right). gamma positive means tilt right.
-  // map gamma to target lateral velocity (x)
-  const desiredX = position.x + (-input.gamma * steerSensitivity) * dt * 60; // multiply for feel
-  // simple lerp
+  const desiredX = position.x + (-input.gamma * steerSensitivity) * dt * 60;
   position.x += (desiredX - position.x) * 0.2;
 
-  // forward movement
-  position.z += speed * dt * 10; //scale for visible speed
+  position.z += speed * dt * 10;
   bike.position.set(position.x, 0.6, position.z);
 
-  // camera follow: behind the bike
   const camTarget = new THREE.Vector3(position.x, 1.5, position.z + 2.5);
   camera.position.lerp(new THREE.Vector3(position.x, 4.0, position.z - 8.0), 0.12);
   camera.lookAt(camTarget);
 
-  // wheelie detection: use beta (front-back). beta positive is phone tilted forward (=leaning forward). 
-  // We assume: beta < -12 deg => leaning back => wheelie
-  const wheelieThreshold = -12;
-  const wheelieMax = -45; // if leaning too much, it's a fall
-  if (input.beta < wheelieThreshold && speed > 3) {
-    // wheelie active
-    wheelieActive = true;
-    wheelieTime += dt;
-  } else {
-    wheelieActive = false;
-  }
-
-  // if leaning too far back -> fall (but no instant game over, apply penalty)
-  if (input.beta < wheelieMax && fallCooldown <= 0) {
-    // fall!
-    applyFall();
-  }
-
-  // collision with walls: simple check if abs(x) > roadHalfWidth
   if (Math.abs(position.x) > roadHalfWidth) {
     const now = performance.now()/1000;
     if (now - lastCollisionAt > collisionCooldown) {
       lastCollisionAt = now;
       applyCollision();
     }
-    // also push bike a bit back inside so it doesn't keep triggering continuous collisions
     position.x = THREE.MathUtils.clamp(position.x, -roadHalfWidth-0.5, roadHalfWidth+0.5);
-    speed *= 0.6; // instant slow down
+    speed *= 0.6;
   }
 
-  // update HUD
   HUD.timerEl.innerText = timer.toFixed(2);
   HUD.distanceEl.innerText = Math.min(position.z, goalDistance).toFixed(1);
   HUD.speedEl.innerText = speed.toFixed(2);
-  HUD.wheelieEl.innerText = wheelieTime.toFixed(2);
   HUD.damageEl.innerText = Math.round(damage);
 
-  // check goal
   if (position.z >= goalDistance) {
     running = false;
     showResult(true);
   }
 
-  // cooldown timers
   if (fallCooldown > 0) fallCooldown -= dt;
 }
 
 function applyCollision(){
-  // wall hit: time loss + damage + reduce speed (handled in update)
-  const timePenalty = 3.0; // seconds
+  const timePenalty = 3.0;
   timer = Math.max(0, timer - timePenalty);
-  damage += 12; // increase damage
+  damage += 12;
   damage = Math.min(100, damage);
-  // quick visual: flash camera or change bike color briefly
   bike.material.color.setHex(0xff6b6b);
   setTimeout(()=> bike.material.color.setHex(0x2a9d8f), 300);
-  // add small knockback
   position.z = Math.max(0, position.z - 4.0);
 }
 
-function applyFall(){
-  // falling from over-tilt: time loss + speed penalty + instability increase
-  const timePenalty = 4.0;
-  timer = Math.max(0, timer - timePenalty);
-  damage += 8;
-  damage = Math.min(100, damage);
-  speed *= 0.5;
-  fallCooldown = 1.5;
-  // visual: rotate bike a bit and then recover
-  const origRot = bike.rotation.z;
-  bike.rotation.z = 0.6 * (Math.random() > 0.5 ? 1 : -1);
-  setTimeout(()=> { bike.rotation.z = origRot; }, 500);
-  // small engine sputter color
-  bike.material.color.setHex(0xffb703);
-  setTimeout(()=> bike.material.color.setHex(0x2a9d8f), 600);
-}
-
-// show result modal (simple alert for prototype)
 function showResult(cleared){
-  const msgParts = [];
-  if (cleared) {
-    msgParts.push("★ GOAL!\n");
-  } else {
-    msgParts.push("✖ TIME UP\n");
-  }
-  msgParts.push("Wheelie Time: " + wheelieTime.toFixed(2) + " sec");
-  msgParts.push("Damage: " + Math.round(damage) + "%");
-  msgParts.push("Distance: " + Math.min(position.z, goalDistance).toFixed(1) + " / " + goalDistance);
-  alert(msgParts.join("\n"));
-  // restart option
-  if (confirm("Retry?")) {
-    startGame();
-  }
+  const msg = cleared
+    ? "★ GOAL!\nDamage: "+Math.round(damage)+"%\nDistance: "+goalDistance
+    : "✖ TIME UP\nDamage: "+Math.round(damage)+"%\nDistance: "+Math.min(position.z, goalDistance).toFixed(1)+" / "+goalDistance;
+  alert(msg);
+  if (confirm("Retry?")) startGame();
 }
 
+// --- auto start ---
+init();
+animate();
+startGame();
 </script>
 </body>
 </html>
