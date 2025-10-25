@@ -106,12 +106,12 @@ button:hover { background-color: rgba(255, 255, 255, 1); }
 const gameData = {
   scenes: {
     0: {
-      texts: ["花井 葉 ：今日もバイト疲れたな、早く帰って寝よう", "花井 葉 ：今日は人通りも少ないな……"],
+      texts: ["花井 葉 ：だいぶ日が暮れちゃったなあ", "花井 葉 ：酔っ払いはいるけど、今日は人通りも少ないな……"],
       next: 1,
       background: "scene_1.png"
     },
     1: {
-      texts: ["花井 葉 ：貝殻のオルゴールだ…", "花井 葉 ：すごく綺麗だな、どこかで見た気がするけど…"],
+      texts: ["花井 葉 ：貝殻のオルゴールが落ちている"],
       choices: [
         { text: "持って帰る", nextId: 3 },
         { text: "そのまま帰る", nextId: 2 }
@@ -119,8 +119,9 @@ const gameData = {
       background: "scene_1.png"
     },
     2: {
-      texts: ["花井 葉 ：明日もまた朝からバイトだなあ…"],
-      background: "scene_1.png"
+      texts: ["花井 葉 ：交番に届けた方が良かったかな…"],
+      background: "scene_1.png",
+      event: "goToYomiti"
     },
     3: {
       texts: [
@@ -134,13 +135,13 @@ const gameData = {
       background: "scene_2.png"
     },
     4: {
-      texts: ["花井 葉 ：交番に行こう…", "なんだか胸がざわつくな…"],
+      texts: ["花井 葉 ：交番に行こう…"],
       next: 6,
       background: "scene_2.png",
       event: "goToAoHeya"
     },
     5: {
-      texts: ["花井 葉 ：良い音色だなあ、どこかで聞いたことあるような…"],
+      texts: ["花井 葉 ："],
       background: "scene_2.png",
       event: "goToHeya"
     },
@@ -203,7 +204,7 @@ function renderScene() {
     if (scene.event === "nameInput") {
       const input = document.createElement("input");
       input.type = "text";
-      input.placeholder = "あなたの名前を入力";
+      input.placeholder = "あなたの名前ひらがなで入力";
       input.style.padding = "10px";
       input.style.fontSize = "1.2em";
       input.style.borderRadius = "8px";
@@ -227,6 +228,13 @@ function renderScene() {
     }
 
     // ✅ id4, id5 の専用ボタンは右上に配置
+    if (scene.event === "goToYomiti") {
+      const btn = document.createElement("button");
+      btn.textContent = "記憶の世界へ向かう ▶";
+      btn.onclick = () => transitionTo("test/index.html?map=nightroad2");
+      actionEl.appendChild(btn);
+    }
+
     if (scene.event === "goToAoHeya") {
       const btn = document.createElement("button");
       btn.textContent = "記憶の世界へ向かう ▶";
@@ -270,16 +278,6 @@ function renderScene() {
     return;
   }
 
-  // 🔹 終了
-  const endText = document.createElement("div");
-  endText.textContent = "（クリックで最初に戻る）";
-  endText.style.color = "#ccc";
-  choicesEl.appendChild(endText);
-  textEl.onclick = () => {
-    currentSceneId = 0;
-    currentTextIndex = 0;
-    renderScene();
-  };
 }
 
 // 🔸 エフェクト付きシーン遷移
