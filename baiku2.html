@@ -3,35 +3,16 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Bike Run 2D - Wheelie Edition</title>
+<title>Bike Run 2D - Enhanced Curve & Impact Edition</title>
 <style>
-  html,body {
-    margin:0; padding:0; height:100%; overflow:hidden;
-    background:#111; color:#fff; font-family:sans-serif;
-  }
-  #hud {
-    position:absolute; top:10px; left:10px; z-index:10;
-    background:rgba(0,0,0,0.35); padding:8px 10px; border-radius:8px;
-  }
-  #hud div { margin:4px 0; font-size:14px; }
-  #controls {
-    position:absolute; right:10px; bottom:10px; z-index:10; display:flex; gap:8px;
-  }
-  .btn {
-    width:80px; height:48px; border-radius:8px;
-    background:rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center;
-    color:#fff; font-size:14px; user-select:none; -webkit-user-select:none;
-  }
-  #message {
-    position:absolute; left:50%; top:60%; transform:translateX(-50%);
-    background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:8px; z-index:20;
-  }
-  #tiltBtn {
-    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    background:#2a9d8f; color:#fff; border:none; border-radius:8px;
-    padding:12px 20px; font-size:16px; z-index:30;
-  }
-  canvas { display:block; width:100%; height:100%; background:#222; }
+  html,body {margin:0;padding:0;height:100%;overflow:hidden;background:#111;color:#fff;font-family:sans-serif;}
+  #hud {position:absolute;top:10px;left:10px;z-index:10;background:rgba(0,0,0,0.35);padding:8px 10px;border-radius:8px;}
+  #hud div {margin:4px 0;font-size:14px;}
+  #controls {position:absolute;right:10px;bottom:10px;z-index:10;display:flex;gap:8px;}
+  .btn {width:80px;height:48px;border-radius:8px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;user-select:none;-webkit-user-select:none;}
+  #message {position:absolute;left:50%;top:60%;transform:translateX(-50%);background:rgba(0,0,0,0.5);padding:8px 12px;border-radius:8px;z-index:20;}
+  #tiltBtn {position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#2a9d8f;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:16px;z-index:30;}
+  canvas {display:block;width:100%;height:100%;background:#222;}
 </style>
 </head>
 <body>
@@ -39,7 +20,7 @@
 
 <div id="hud">
   <div>Time: <span id="timer">--</span></div>
-  <div>Distance: <span id="distance">0</span> / <span id="goalDist">500</span></div>
+  <div>Distance: <span id="distance">0</span> / <span id="goalDist">1200</span></div>
   <div>Speed: <span id="speed">0</span> m/s</div>
   <div>Damage: <span id="damage">0</span>%</div>
 </div>
@@ -53,258 +34,222 @@
 <button id="tiltBtn">傾き操作を有効にする</button>
 
 <script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-const HUD = {
-  timerEl: document.getElementById('timer'),
-  distanceEl: document.getElementById('distance'),
-  goalDistEl: document.getElementById('goalDist'),
-  speedEl: document.getElementById('speed'),
-  damageEl: document.getElementById('damage'),
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+const HUD={
+  timerEl:document.getElementById('timer'),
+  distanceEl:document.getElementById('distance'),
+  goalDistEl:document.getElementById('goalDist'),
+  speedEl:document.getElementById('speed'),
+  damageEl:document.getElementById('damage'),
 };
-let width, height;
-function resize(){
-  width = window.innerWidth;
-  height = window.innerHeight;
-  canvas.width = width;
-  canvas.height = height;
-}
-window.addEventListener('resize', resize);
-resize();
+let width,height;
+function resize(){width=window.innerWidth;height=window.innerHeight;canvas.width=width;canvas.height=height;}
+window.addEventListener('resize',resize);resize();
 
 // === ゲーム変数 ===
-let baseSpeed = 12;
-let speed = 0;
-let accelPower = 6;
-let brakePower = 10;
-let steerSensitivity = 0.06;
-let roadHalfWidth = width * 0.35;
-let pos = { x: 0, z: 0 };
-let goalDistance = 500;
-let timer = 60;
-let running = true;
-let damage = 0;
-let lastCollision = -999;
-let collisionCooldown = 1;
-let input = { accel:false, brake:false, gamma:0 };
-let wheelie = { active:false, timer:0, angle:0 };
-let particles = [];
+let baseSpeed=12,speed=0;
+let accelPower=6,brakePower=10;
+let steerSensitivity=0.06;
+let pos={x:0,z:0};
+let goalDistance=1200,timer=60,running=true,damage=0;
+let lastCollision=-999,collisionCooldown=1;
+let input={accel:false,brake:false,gamma:0};
+let wheelie={active:false,timer:0,angle:0};
+let particles=[],obstacles=[];
+let shakeEffect=0,flashAlpha=0;
 
-document.getElementById('goalDist').textContent = goalDistance;
+// === コース関数 ===
+function roadCurve(z){return Math.sin(z/200)*180+Math.sin(z/500)*100;}
+function roadWidthAt(z){return width*(0.25+0.15*(1+Math.sin(z/300)));}
 
-// === タッチ操作 ===
-const accelBtn = document.getElementById('accel');
-const brakeBtn = document.getElementById('brake');
-accelBtn.addEventListener('touchstart', e=>{ e.preventDefault(); input.accel=true; });
-accelBtn.addEventListener('touchend', e=>{ e.preventDefault(); input.accel=false; });
-brakeBtn.addEventListener('touchstart', e=>{ e.preventDefault(); input.brake=true; });
-brakeBtn.addEventListener('touchend', e=>{ e.preventDefault(); input.brake=false; });
+// === 障害物生成 ===
+for(let i=200;i<goalDistance;i+=180){
+  obstacles.push({z:i+Math.random()*80,x:(Math.random()*2-1)*150,size:30+Math.random()*20,type:Math.random()>0.5?"cone":"car"});
+}
 
-// === デバイス傾き ===
-const tiltBtn = document.getElementById('tiltBtn');
-tiltBtn.addEventListener('click', ()=>{
-  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+// === 操作 ===
+const accelBtn=document.getElementById('accel'),brakeBtn=document.getElementById('brake');
+accelBtn.addEventListener('touchstart',e=>{e.preventDefault();input.accel=true;});
+accelBtn.addEventListener('touchend',e=>{e.preventDefault();input.accel=false;});
+brakeBtn.addEventListener('touchstart',e=>{e.preventDefault();input.brake=true;});
+brakeBtn.addEventListener('touchend',e=>{e.preventDefault();input.brake=false;});
+const tiltBtn=document.getElementById('tiltBtn');
+tiltBtn.addEventListener('click',()=>{
+  if(typeof DeviceOrientationEvent.requestPermission==='function'){
     DeviceOrientationEvent.requestPermission().then(state=>{
-      if (state === 'granted') enableTilt();
-      tiltBtn.style.display = 'none';
-    }).catch(()=> alert("傾きセンサーが許可されませんでした。"));
-  } else {
-    enableTilt();
-    tiltBtn.style.display = 'none';
-  }
+      if(state==='granted')enableTilt();
+      tiltBtn.style.display='none';
+    }).catch(()=>alert("傾きセンサーが許可されませんでした。"));
+  }else{enableTilt();tiltBtn.style.display='none';}
 });
-function enableTilt(){
-  window.addEventListener('deviceorientation', e=>{
-    input.gamma = e.gamma || 0;
-  });
-}
-
-// === キーボード操作 ===
-window.addEventListener('keydown', e=>{
-  if (e.key === "ArrowRight") input.accel = true;
-  if (e.key === "ArrowLeft") input.brake = true;
+function enableTilt(){window.addEventListener('deviceorientation',e=>{input.gamma=e.gamma||0;});}
+window.addEventListener('keydown',e=>{
+  if(e.key==="ArrowRight")input.accel=true;
+  if(e.key==="ArrowLeft")input.brake=true;
 });
-window.addEventListener('keyup', e=>{
-  if (e.key === "ArrowRight") input.accel = false;
-  if (e.key === "ArrowLeft") input.brake = false;
+window.addEventListener('keyup',e=>{
+  if(e.key==="ArrowRight")input.accel=false;
+  if(e.key==="ArrowLeft")input.brake=false;
 });
 
-// === 粒子（炎エフェクト用） ===
-function addParticle(x, y){
-  particles.push({
-    x, y,
-    vx: (Math.random()-0.5)*2,
-    vy: -2 - Math.random()*2,
-    life: 0.6
-  });
+// === パーティクル ===
+function addParticle(x,y,type="flame"){
+  particles.push({x,y,type,vx:(Math.random()-0.5)*2,vy:type==="spark"?-1-Math.random()*1.5:-2-Math.random()*2,life:type==="spark"?0.8:0.5,size:type==="spark"?3+Math.random()*3:4+Math.random()*4});
 }
-function updateParticles(dt){
-  for(let p of particles){
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life -= dt;
-  }
-  particles = particles.filter(p => p.life > 0);
-}
+function updateParticles(dt){for(let p of particles){p.x+=p.vx;p.y+=p.vy;p.life-=dt;}particles=particles.filter(p=>p.life>0);}
 function drawParticles(){
   for(let p of particles){
-    const alpha = Math.max(0, p.life/0.6);
-    ctx.fillStyle = `rgba(255,${Math.floor(100+150*alpha)},0,${alpha})`;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 5*alpha, 0, Math.PI*2);
-    ctx.fill();
+    const a=Math.max(0,p.life/(p.type==="spark"?0.8:0.5));
+    ctx.fillStyle=p.type==="flame"?`rgba(255,${Math.floor(100+155*a)},0,${a})`:`rgba(255,255,${200+Math.random()*55},${a})`;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.size*a,0,Math.PI*2);ctx.fill();
   }
 }
 
 // === 描画 ===
 function draw(){
+  ctx.save();
+  if(shakeEffect>0){ctx.translate((Math.random()-0.5)*10*shakeEffect,(Math.random()-0.5)*10*shakeEffect);}
   ctx.clearRect(0,0,width,height);
 
-  // 道路
-  ctx.fillStyle = "#333";
-  ctx.fillRect(width/2 - roadHalfWidth, 0, roadHalfWidth*2, height);
+  const roadCenterX=width/2+roadCurve(pos.z);
+  const roadHalfWidth=roadWidthAt(pos.z);
 
-  // 下部アニメーション
-  const animHeight = 60;
-  const grad = ctx.createLinearGradient(0, height-animHeight, 0, height);
-  if(wheelie.active){
-    grad.addColorStop(0, "rgba(255,100,0,0.5)");
-    grad.addColorStop(1, "rgba(255,0,0,0.8)");
-  }else{
-    grad.addColorStop(0, "rgba(100,255,255,0.3)");
-    grad.addColorStop(1, "rgba(0,150,255,0.6)");
-  }
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, height-animHeight, width, animHeight);
+  // 道路（遠近感を出す）
+  const gradient=ctx.createLinearGradient(0,0,0,height);
+  gradient.addColorStop(0,"#222");gradient.addColorStop(1,"#444");
+  ctx.fillStyle=gradient;
+  ctx.beginPath();
+  ctx.moveTo(roadCenterX-roadHalfWidth,0);
+  ctx.lineTo(roadCenterX+roadHalfWidth,0);
+  ctx.lineTo(roadCenterX+roadHalfWidth*0.6,height);
+  ctx.lineTo(roadCenterX-roadHalfWidth*0.6,height);
+  ctx.closePath();
+  ctx.fill();
 
   // ガードレール
-  ctx.fillStyle = "#800";
-  ctx.fillRect(width/2 - roadHalfWidth - 10, 0, 10, height);
-  ctx.fillRect(width/2 + roadHalfWidth, 0, 10, height);
+  ctx.fillStyle="#800";
+  ctx.fillRect(roadCenterX-roadHalfWidth-10,0,10,height);
+  ctx.fillRect(roadCenterX+roadHalfWidth,0,10,height);
 
-  // バイク
-  const bikeY = height * 0.8;
-  const bikeX = width/2 + pos.x;
-  ctx.save();
-  ctx.translate(bikeX, bikeY);
-  ctx.rotate((input.gamma * -0.02) + wheelie.angle);
-  ctx.fillStyle = wheelie.active ? "#ff4500" : "#2a9d8f";
-  ctx.fillRect(-15, -30, 30, 60);
-  ctx.restore();
+  // 障害物
+  for(let ob of obstacles){
+    const relZ=ob.z-pos.z;
+    if(relZ<0||relZ>120)continue;
+    const y=height-relZ*10;
+    const x=roadCenterX+ob.x;
+    if(ob.type==="cone"){
+      ctx.fillStyle="#fa0";
+      ctx.beginPath();ctx.moveTo(x,y-ob.size);ctx.lineTo(x-ob.size/2,y);ctx.lineTo(x+ob.size/2,y);ctx.closePath();ctx.fill();
+    }else{
+      ctx.fillStyle="#0af";ctx.fillRect(x-ob.size,y-ob.size/2,ob.size*2,ob.size);
+    }
+    const dx=(x-(width/2+pos.x)),dy=(y-(height*0.8));
+    if(Math.abs(dx)<ob.size&&Math.abs(dy)<ob.size){applyCollision();ob.z+=9999;}
+  }
+
+  // メインバイク
+  const bikeY=height*0.8,bikeX=width/2+pos.x;
+  ctx.fillStyle=wheelie.active?"#ffd700":"#2a9d8f";
+  ctx.fillRect(bikeX-15,bikeY-30,30,60);
 
   drawParticles();
 
   // 距離マーカー
-  ctx.strokeStyle = "#ff0";
-  for (let i=0;i<10;i++){
-    const z = (i*50 - (pos.z%50)) * 10;
-    const y = height - z;
-    if (y < -10 || y > height) continue;
-    ctx.beginPath();
-    ctx.moveTo(width/2 - roadHalfWidth + 10, y);
-    ctx.lineTo(width/2 + roadHalfWidth - 10, y);
-    ctx.stroke();
+  ctx.strokeStyle="#ff0";
+  for(let i=0;i<10;i++){
+    const z=(i*50-(pos.z%50))*10;
+    const y=height-z;if(y<-10||y>height)continue;
+    ctx.beginPath();ctx.moveTo(roadCenterX-roadHalfWidth+10,y);ctx.lineTo(roadCenterX+roadHalfWidth-10,y);ctx.stroke();
   }
 
-  // HUD
-  HUD.timerEl.textContent = timer.toFixed(2);
-  HUD.distanceEl.textContent = Math.min(pos.z, goalDistance).toFixed(1);
-  HUD.speedEl.textContent = speed.toFixed(2);
-  HUD.damageEl.textContent = Math.round(damage);
+  // 下部ミニバイク表示
+  drawBikeStatus(width/2,height-80);
+
+  if(flashAlpha>0){ctx.fillStyle=`rgba(255,0,0,${flashAlpha})`;ctx.fillRect(0,0,width,height);}
+
+  ctx.restore();
+
+  HUD.timerEl.textContent=timer.toFixed(2);
+  HUD.distanceEl.textContent=Math.min(pos.z,goalDistance).toFixed(1);
+  HUD.speedEl.textContent=speed.toFixed(2);
+  HUD.damageEl.textContent=Math.round(damage);
 }
 
-// === ゲーム更新 ===
-let lastTime = performance.now();
+// === 下部HUDバイク ===
+function drawBikeStatus(cx,cy){
+  ctx.save();ctx.translate(cx,cy);
+  const tilt=wheelie.active?-0.3:0;
+  ctx.rotate(tilt);
+  ctx.fillStyle=wheelie.active?"#ffd700":"#2a9d8f";
+  ctx.fillRect(-40,-10,80,20);
+  ctx.fillStyle="#888";
+  ctx.beginPath();ctx.arc(-30,20,18,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(30,20,18,0,Math.PI*2);ctx.fill();
+  if(damage>10&&Math.random()<damage/100)addParticle(cx-30+Math.random()*60,cy+20,"flame");
+  ctx.restore();
+}
+
+// === 更新 ===
+let lastTime=performance.now();
 function update(){
-  if (!running) return;
-  const now = performance.now();
-  const dt = Math.min((now - lastTime)/1000, 0.05);
-  lastTime = now;
+  if(!running)return;
+  const now=performance.now();
+  const dt=Math.min((now-lastTime)/1000,0.05);
+  lastTime=now;
+  timer-=dt;if(timer<=0){timer=0;running=false;showResult(false);}
+  const dmgFactor=Math.min(damage/100,0.9);
+  const maxSpeed=baseSpeed*(1-dmgFactor);
+  if(input.accel){speed+=accelPower*dt;wheelie.timer+=dt;}
+  else{speed-=2*dt;wheelie.timer=Math.max(0,wheelie.timer-dt*2);}
+  if(input.brake)speed-=brakePower*dt;
+  speed=Math.max(0,Math.min(maxSpeed,speed));
 
-  timer -= dt;
-  if (timer <= 0){ timer=0; running=false; showResult(false); }
+  // ★ ウイリー時間調整（以前より長く必要）
+  if(wheelie.timer>2.0&&!wheelie.active)wheelie.active=true;
+  if(!input.accel&&wheelie.active)wheelie.active=false;
 
-  const damageFactor = Math.min(damage/100, 0.9);
-  const maxSpeed = baseSpeed * (1 - damageFactor);
+  pos.x+=(-input.gamma*steerSensitivity)*dt*500*(wheelie.active?1.5:1);
+  pos.z+=speed*dt*10;
 
-  if (input.accel){
-    speed += accelPower * dt;
-    wheelie.timer += dt;
-  } else {
-    speed -= 2 * dt;
-    wheelie.timer = Math.max(0, wheelie.timer - dt*2);
-  }
-  if (input.brake) speed -= brakePower * dt;
-
-  speed = Math.max(0, Math.min(maxSpeed, speed));
-
-  // === ウイリー判定 ===
-  if (wheelie.timer > 1.0 && !wheelie.active){
-    wheelie.active = true;
-  }
-  if (!input.accel && wheelie.active){
-    wheelie.active = false;
+  const roadCenterX=width/2+roadCurve(pos.z);
+  const roadHalfWidth=roadWidthAt(pos.z);
+  if(Math.abs(pos.x)>roadHalfWidth-20){
+    const nowSec=now/1000;
+    if(nowSec-lastCollision>collisionCooldown){lastCollision=nowSec;applyCollision();}
+    pos.x=Math.sign(pos.x)*(roadHalfWidth-20);speed*=0.6;
   }
 
-  // ウイリー角度
-  wheelie.angle += ((wheelie.active ? -0.35 : 0) - wheelie.angle) * dt * 3;
-
-  // スマホ傾きによる横移動
-  pos.x += (-input.gamma * steerSensitivity) * dt * 500 * (wheelie.active ? 1.5 : 1);
-  pos.z += speed * dt * 10;
-
-  // 壁判定
-  if (Math.abs(pos.x) > roadHalfWidth - 20){
-    const nowSec = now / 1000;
-    if (nowSec - lastCollision > collisionCooldown){
-      lastCollision = nowSec;
-      applyCollision();
-    }
-    pos.x = Math.sign(pos.x) * (roadHalfWidth - 20);
-    speed *= 0.6;
-  }
-
-  // 炎パーティクル
-  if (wheelie.active){
-    addParticle(width/2 + pos.x, height*0.8 + 25);
-  }
+  if(wheelie.active&&Math.random()<0.3)addParticle(width/2+pos.x,height*0.8,"spark");
   updateParticles(dt);
 
-  // ゴール
-  if (pos.z >= goalDistance){
-    running=false; showResult(true);
-  }
+  if(pos.z>=goalDistance){running=false;showResult(true);}
+  if(shakeEffect>0)shakeEffect-=dt*2;
+  if(flashAlpha>0)flashAlpha-=dt*3;
 }
 
 function applyCollision(){
-  timer = Math.max(0, timer - 3);
-  damage = Math.min(100, damage + 12);
+  timer=Math.max(0,timer-3);
+  damage=Math.min(100,damage+12);
+  shakeEffect=1;flashAlpha=0.5;
+  speed*=0.5;
 }
 
 function showResult(clear){
   setTimeout(()=>{
-    alert(clear ? `★ GOAL!\nDamage:${Math.round(damage)}%\nDistance:${goalDistance}` 
-                : `✖ TIME UP\nDamage:${Math.round(damage)}%\nDistance:${pos.z.toFixed(1)} / ${goalDistance}`);
-    if (confirm("Retry?")) resetGame();
+    alert(clear?`★ GOAL!\nDamage:${Math.round(damage)}%\nDistance:${goalDistance}`:`✖ TIME UP\nDamage:${Math.round(damage)}%\nDistance:${pos.z.toFixed(1)} / ${goalDistance}`);
+    if(confirm("Retry?"))resetGame();
   },100);
 }
-
 function resetGame(){
-  pos = {x:0,z:0};
-  speed = 0;
-  timer = 60;
-  damage = 0;
-  wheelie = {active:false, timer:0, angle:0};
-  particles = [];
-  running = true;
+  pos={x:0,z:0};speed=0;timer=60;damage=0;
+  wheelie={active:false,timer:0,angle:0};
+  particles=[];running=true;
+  obstacles.forEach(o=>o.z-=goalDistance);
 }
 
-// === ループ ===
-function loop(){
-  if (running) update();
-  draw();
-  requestAnimationFrame(loop);
-}
+// === メインループ ===
+function loop(){if(running)update();draw();requestAnimationFrame(loop);}
 loop();
 </script>
 </body>
