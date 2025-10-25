@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>最強お寿司パーティ - ネギトロドンタイム＋まんぷく演出</title>
+<style>
+body { margin:0; padding:0; background:#f0f8ff; font-family:sans-serif; text-align:center;}
+canvas { background:#ffe; display:block; margin:20px auto; border:2px solid #333; }
+#score { font-size:24px; margin-top:10px; }
+#bonus, #message, #gameover { font-size:32px; color:red; display:none; position:absolute; width:100%; text-align:center; top:50px;}
+#parts { position:absolute; top:10px; right:10px; font-size:18px; }
+.part { display:inline-block; width:20px; text-align:center; margin:0 2px; color:gray; text-shadow: 1px 1px 2px black; }
+.part.collected { color:gold; text-shadow: 0 0 10px gold, 0 0 20px gold; }
+#donImage { display:none; position:absolute; width:200px; height:200px; top:120px; left:50%; transform:translateX(-50%); }
+button { margin-top:10px; padding:10px 20px; font-size:18px; }
+</style>
+</head>
+<body>
+<h1>ネギとマグロで最強お寿司パーティ！</h1>
+<canvas id="game" width="400" height="400"></canvas>
+<div id="score">スコア: 0</div>
+<div id="bonus">ねぎとろドン！！</div>
+<div id="message">ネギトロ誕生！プレイヤー操作可能！</div>
+<div id="gameover">まんぷく～ ねぎとろドン！</div>
+<div id="parts">
+  <span class="part" id="part-ね">ね</span>
+  <span class="part" id="part-ぎ">ぎ</span>
+  <span class="part" id="part-と">と</span>
+  <span class="part" id="part-ろ">ろ</span>
+</div>
+<img id="donImage" src="negitorodon.png" alt="ネギトロ丼">
+<button onclick="startGame()">ゲームスタート</button>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let score = 0;
+let gameInterval, spawnInterval, gameTimer;
+let playerActive = false;
+let bonusTime = false;
+let gameOver = false;
+
+// プレイヤー
+let player = { x:180, y:350, width:40, height:20, speed:5, vx:0, vy:0 };
+const accel = 0.5, friction = 0.85;
+const keys = { left:false, right:false, up:false, down:false };
+
+// オブジェクト管理
+let objects = [];
+let neggToroList = [];
+let particles = [];
+const letters = ["ね","ぎ","と","ろ"];
+let collectedParts = {ね:false, ぎ:false, と:false, ろ:false};
+
+// 描画関数
+function drawCircle(obj){
+  ctx.save();
+  ctx.translate(obj.x,obj.y);
+  ctx.rotate(obj.angle||0);
+  if(obj.type==="negi") ctx.fillStyle="green";
+  else if(obj.type==="maguro") ctx.fillStyle="red";
+  else if(obj.type==="negtoro") ctx.fillStyle="pink";
+  else ctx.fillStyle="orange";
+  ctx.beginPath();
+  ctx.arc(0,0,20,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+  if(obj.type==="letter"){
+    ctx.fillStyle="white";
+    ctx.font="16px sans-serif";
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText(obj.char, obj.x, obj.y);
+  }
+}
+
+function drawPlayer(){ ctx.fillStyle="yellow"; ctx.fillRect(player.x,player.y,player.width,player.height); }
+function drawParticles(){
+  particles.forEach((p,i)=>{
+    ctx.fillStyle=`rgba(${p.r},${p.g},${p.b},${p.alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+    ctx.fill();
+    p.x+=p.vx; p.y+=p.vy; p.alpha-=0.02;
+    if(p.alpha<=0) particles.splice(i,1);
+  });
+}
+function spawnParticles(x,y,color,count=20){
+  for(let i=0;i<count;i++){
+    particles.push({x,y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,r:color.r,g:color.g,b:color.b,alpha:1,size:3+Math.random()*3});
+  }
+}
+
+function checkCollision(obj){ return player.x < obj.x+20 && player.x+player.width > obj.x-20 && player.y < obj.y+20 && player.y+player.height > obj.y-20; }
+function updatePartsDisplay(){
+  for(let key in collectedParts){
+    const el = document.getElementById("part-"+key);
+    if(collectedParts[key]) el.classList.add("collected");
+    else el.classList.remove("collected");
+  }
+}
+
+// ゲーム更新
+function update(){
+  if(gameOver) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // プレイヤー滑らか移動
+  if(playerActive){
+    if(keys.left) player.vx-=accel;
+    if(keys.right) player.vx+=accel;
+    if(keys.up) player.vy-=accel;
+    if(keys.down) player.vy+=accel;
+    player.vx*=friction; player.vy*=friction;
+    player.x+=player.vx; player.y+=player.vy;
+    if(player.x<0){player.x=0;player.vx=0;}
+    if(player.x+player.width>canvas.width){player.x=canvas.width-player.width;player.vx=0;}
+    if(player.y<0){player.y=0;player.vy=0;}
+    if(player.y+player.height>canvas.height){player.y=canvas.height-player.height;player.vy=0;}
+  }
+
+  // オブジェクト描画・取得判定
+  objects.forEach((obj,i)=>{
+    obj.x += obj.speedX || 0;
+    obj.y += obj.speedY || 0;
+    drawCircle(obj);
+    if(playerActive && obj.type==="letter" && checkCollision(obj)){
+      collectedParts[obj.char]=true;
+      spawnParticles(obj.x,obj.y,{r:255,g:215,b:0},30);
+      objects.splice(i,1);
+      updatePartsDisplay();
+    }
+  });
+
+  // ネギ＋マグロ触れ合いでネギトロ生成
+  const negi = objects.find(o=>o.type==="negi");
+  const maguro = objects.find(o=>o.type==="maguro");
+  if(negi && maguro && Math.abs(negi.x-maguro.x)<30 && Math.abs(negi.y-maguro.y)<30){
+    neggToroList.push({type:"negtoro", x:(negi.x+maguro.x)/2, y:(negi.y+maguro.y)/2, speedX:1, speedY:1});
+    objects = objects.filter(o=>o!==negi && o!==maguro);
+    playerActive=true;
+    document.getElementById("message").style.display="block";
+    setTimeout(()=>{document.getElementById("message").style.display="none"},1500);
+    spawnParticles((negi.x+maguro.x)/2,(negi.y+maguro.y)/2,{r:255,g:192,b:203},50);
+  }
+
+  // ネギトロ移動
+  neggToroList.forEach((nt,i)=>{
+    nt.x+=nt.speedX; nt.y+=nt.speedY;
+    if(nt.x>canvas.width-20||nt.x<20) nt.speedX*=-1;
+    if(nt.y>canvas.height-20||nt.y<20) nt.speedY*=-1;
+    drawCircle(nt);
+    if(playerActive && checkCollision(nt)){
+      score+=50;
+      spawnParticles(nt.x,nt.y,{r:255,g:192,b:203},30);
+      neggToroList.splice(i,1);
+    }
+  });
+
+  // 文字全部取得でドンタイム
+  if(!bonusTime && Object.values(collectedParts).every(v=>v)){
+    bonusTime=true;
+    document.getElementById("bonus").style.display="block";
+    for(let i=0;i<8;i++) autoSpawnLetter();
+    setTimeout(()=>{
+      bonusTime=false;
+      document.getElementById("bonus").style.display="none";
+      collectedParts = {ね:false, ぎ:false, と:false, ろ:false};
+      updatePartsDisplay();
+    },5000);
+  }
+
+  drawPlayer();
+  drawParticles();
+}
+
+// ドンタイム用文字生成
+function autoSpawnLetter(){
+  objects.push({type:"letter", char:letters[Math.floor(Math.random()*letters.length)], x:Math.random()*canvas.width, y:Math.random()*canvas.height/2, speedX:0, speedY:0});
+}
+
+// キー操作
+document.addEventListener("keydown",e=>{
+  if(!playerActive) return;
+  if(e.key==="ArrowLeft") keys.left=true;
+  if(e.key==="ArrowRight") keys.right=true;
+  if(e.key==="ArrowUp") keys.up=true;
+  if(e.key==="ArrowDown") keys.down=true;
+});
+document.addEventListener("keyup",e=>{
+  if(e.key==="ArrowLeft") keys.left=false;
+  if(e.key==="ArrowRight") keys.right=false;
+  if(e.key==="ArrowUp") keys.up=false;
+  if(e.key==="ArrowDown") keys.down=false;
+});
+
+// ゲームオーバー
+function endGame(){
+  gameOver=true;
+  document.getElementById("gameover").style.display="block";
+  document.getElementById("donImage").style.display="block"; // ネギトロ丼登場
+  clearInterval(gameInterval);
+  clearInterval(spawnInterval);
+  clearTimeout(gameTimer);
+}
+
+// スタート
+function startGame(){
+  score=0;
+  player.x=180; player.y=350; player.vx=0; player.vy=0; playerActive=false; gameOver=false;
+  bonusTime=false;
+  collectedParts = {ね:false, ぎ:false, と:false, ろ:false};
+  updatePartsDisplay();
+  document.getElementById("gameover").style.display="none";
+  document.getElementById("donImage").style.display="none";
+  objects=[
+    { type:"negi", x:50, y:200, speedX:2, speedY:0 },
+    { type:"maguro", x:350, y:200, speedX:-2, speedY:0 },
+    { type:"letter", char:"ね", x:150, y:150, speedX:0, speedY:0 },
+    { type:"letter", char:"ぎ", x:250, y:150, speedX:0, speedY:0 },
+    { type:"letter", char:"と", x:100, y:100, speedX:0, speedY:0 },
+    { type:"letter", char:"ろ", x:300, y:100, speedX:0, speedY:0 }
+  ];
+  neggToroList=[];
+  particles=[];
+  if(gameInterval) clearInterval(gameInterval);
+  if(spawnInterval) clearInterval(spawnInterval);
+  if(gameTimer) clearTimeout(gameTimer);
+  gameInterval=setInterval(()=>{ update(); document.getElementById("score").innerText="スコア: "+score; },30);
+  spawnInterval=setInterval(autoSpawnLetter,3000);
+  gameTimer=setTimeout(endGame,30000); // 30秒後にゲームオーバー
+}
+</script>
+</body>
+</html>
