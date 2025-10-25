@@ -106,7 +106,9 @@ button:hover { background-color: rgba(255, 255, 255, 1); }
 const gameData = {
   scenes: {
     0: {
-      texts: ["花井 葉 ：だいぶ日が暮れちゃったなあ", "花井 葉 ：酔っ払いはいるけど、今日は人通りも少ないな……"],
+      texts: ["花井 葉 ：だいぶ日が暮れちゃったなあ", "花井 葉 ：酔っ払いはいるけど、今日は人通りも少ないな……",
+      "酔っ払い　：ぱないよ！半端ない！",
+      "花井 葉 ：オレの名前は花井葉（ぱない よう）","花井 葉 ：半端ないと言われるとドキッとする",],
       next: 1,
       background: "scene_1.png"
     },
@@ -126,7 +128,6 @@ const gameData = {
     3: {
       texts: [
         "花井 葉 ：持って帰っちゃったけど、明日交番に持って行かなきゃ",
-        "花井 葉 ：寝る前にもう一度聞いてみようかな"
       ],
       choices: [
         { text: "交番へ持っていく", nextId: 4 },
@@ -135,27 +136,27 @@ const gameData = {
       background: "scene_2.png"
     },
     4: {
-      texts: ["花井 葉 ：交番に行こう…"],
+      texts: ["花井 葉 ：明日、交番に行こう"],
       next: 6,
       background: "scene_2.png",
-      event: "goToAoHeya"
     },
     5: {
-      texts: ["花井 葉 ："],
+      texts: ["花井 葉 ：寝る前に部屋の片づけをしよう"],
       background: "scene_2.png",
       event: "goToHeya"
     },
     6: {
-      texts: ["警察官：ありがとね、名前は？"],
+      texts: ["警察官：落とし物ね、君の名前は？"],
       background: "scene_3.png",
       event: "nameInput"
     },
     7: {
-      texts: ["花井 葉 ：落とし主が見つかるといいな…", "花井 葉 ：でも、どこかで見たことがあるんだけどな…"],
-      background: "scene_3.png"
+      texts: ["花井 葉 ：落とし主が見つかるといいな"],
+      background: "scene_3.png",
+      event: "goToKioku"
     },
     8: {
-      texts: ["ユイ：藤沢くん、ありがとう", "ユイ：もう一度、会えると思ってた"],
+      texts: ["ユイ：もしもし、ゆめのようさんですか？"],
       next: 9,
       background: "scene_4.png"
     },
@@ -170,7 +171,7 @@ let currentSceneId = 0;
 let currentTextIndex = 0;
 let playerName = "";
 
-// ✅ URLに ?id=6 があればその値を使用、なければ0
+// ✅ URLに ?id= があればその値を使用、なければ0
 const params = new URLSearchParams(window.location.search);
 const startId = parseInt(params.get("id"));
 currentSceneId = isNaN(startId) ? 0 : startId;
@@ -204,7 +205,7 @@ function renderScene() {
     if (scene.event === "nameInput") {
       const input = document.createElement("input");
       input.type = "text";
-      input.placeholder = "あなたの名前ひらがなで入力";
+      input.placeholder = "名前をひらがなで入力";
       input.style.padding = "10px";
       input.style.fontSize = "1.2em";
       input.style.borderRadius = "8px";
@@ -217,7 +218,7 @@ function renderScene() {
       btn.textContent = "OK";
       btn.onclick = () => {
         const name = input.value.trim();
-        if (!name) return alert("名前を入力してください。");
+        if (!name) return alert("名前をひらがなで入力してください。");
         playerName = name;
         currentSceneId = playerName === "ゆめのよう" ? 8 : 7;
         currentTextIndex = 0;
@@ -230,22 +231,22 @@ function renderScene() {
     // ✅ id4, id5 の専用ボタンは右上に配置
     if (scene.event === "goToYomiti") {
       const btn = document.createElement("button");
-      btn.textContent = "記憶の世界へ向かう ▶";
+      btn.textContent = "夜道の記憶へ向かう ▶";
       btn.onclick = () => transitionTo("test/index.html?map=nightroad2");
-      actionEl.appendChild(btn);
-    }
-
-    if (scene.event === "goToAoHeya") {
-      const btn = document.createElement("button");
-      btn.textContent = "記憶の世界へ向かう ▶";
-      btn.onclick = () => transitionTo("aoheya.html");
       actionEl.appendChild(btn);
     }
 
     if (scene.event === "goToHeya") {
       const btn = document.createElement("button");
-      btn.textContent = "部屋へ戻る ▶";
-      btn.onclick = () => transitionTo("heya.html?id=6");
+      btn.textContent = "部屋へ向かう ▶";
+      btn.onclick = () => transitionTo("test/index.html?map=heya");
+      actionEl.appendChild(btn);
+    }
+
+    if (scene.event === "goToKioku") {
+      const btn = document.createElement("button");
+      btn.textContent = "昔の記憶へ向かう ▶";
+      btn.onclick = () => transitionTo("test/index.html?map=kioku");
       actionEl.appendChild(btn);
     }
   }

@@ -29,7 +29,7 @@ const maps = {
           x:12, y:6, text:[
             "うぅ…ふらふら…",
             "今日も飲みすぎた…頭痛い…",
-            "パないよう！半端ない！",
+            "パないよう！半端ない頭痛だ！",
             "このゲームは、記憶のマップを探索してヒントを探して物語を進めるんだ",
             "さっき歩いていたお姉ちゃんは何を探していたんだろう?"
           ]
@@ -75,7 +75,7 @@ const maps = {
         ]
       },
   
-    "room": {
+    "heya": {
       name: "部屋",
       world: [
         [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
@@ -87,7 +87,7 @@ const maps = {
         [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
         [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
         [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
         [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
         [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
         [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
@@ -95,16 +95,16 @@ const maps = {
         [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
       ],
       npcs: [
-        { x:5, y:5, text:["こんにちは！","ここは静かな部屋です。"] },
-        { x:14, y:3, text:["この部屋には3人の人がいます。","動かないNPCもいますよ。"] },
-        { x:10, y:8, text:["物を調べるとヒントが見つかるかも。"] }
+        { x:5, y:5, text:["昔の写真だ", "お母さんと僕と弟が映っている"],movable: false },
+        { x:11, y:5, text:["卒業文集 ゆめのよう", "小学校は楽しい思い出がたくさんありました", "まるで夢のような時間でした"],movable: false },
+        { x:8, y:5, text:["今の写真だ","お母さんと僕と弟、それにお父さんが映っている"],movable: false }
       ],
       items: [
-        { x:10, y:7, name:"不思議なランプ", collected:false }
+        { x:10, y:10, name:"光る貝殻のオルゴール", collected:false }
       ]
     },
   
-    "memory": {
+    "kioku": {
       name: "記憶",
       world: [
         [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
@@ -124,13 +124,10 @@ const maps = {
         [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
       ],
       npcs: [
-        { x:3, y:3, text:["昔の記憶がよみがえる…"] },
-        { x:16, y:3, text:["ここで何かを思い出すかもしれない。"] },
-        { x:10, y:6, text:["動き回るNPCもいる。"] }
+        { x:5, y:7, text:["君の名前、変わってて面白いね","このオルゴールは私の大事なものなんだ"] },
       ],
       items: [
-        { x:5, y:5, name:"記憶の欠片", collected:false },
-        { x:14, y:5, name:"光る石", collected:false }
+        { x:5, y:5, name:"光る貝殻のオルゴール", collected:false },
       ]
     },
   
@@ -218,13 +215,19 @@ function updateNPCs(dt){
   if(npcMoveTimer>=5000){
     npcMoveTimer=0;
     for(const npc of currentMap.npcs){
-      if(activeNPC===npc)continue;
+      if(activeNPC===npc) continue;
+      if(npc.movable === false) continue; // 動かないNPCはスキップ
       const dir=Math.floor(Math.random()*4);
       const dx=[1,-1,0,0][dir];
       const dy=[0,0,1,-1][dir];
       const nx=Math.round(npc.x)+dx;
       const ny=Math.round(npc.y)+dy;
-      if(isWalkable(nx,ny)){npc.x=nx;npc.y=ny; npc.px=nx*TILE;npc.py=ny*TILE;}
+      if(isWalkable(nx,ny)){
+        npc.x=nx;
+        npc.y=ny;
+        npc.px=nx*TILE;
+        npc.py=ny*TILE;
+      }
     }
   }
 }
