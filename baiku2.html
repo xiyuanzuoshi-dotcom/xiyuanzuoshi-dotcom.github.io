@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>Bike Run 2D - Burning Curve Edition</title>
 <style>
-  html,body {margin:0;padding:0;height:100%;overflow:hidden;background:#111;color:#fff;font-family:sans-serif;}
+  html,body {margin:0;padding:0;height:100%;overflow:hidden;background:#000;color:#fff;font-family:sans-serif;}
   #hud {position:absolute;top:10px;left:10px;z-index:10;background:rgba(0,0,0,0.35);padding:8px 10px;border-radius:8px;}
   #hud div {margin:4px 0;font-size:14px;}
   #controls {position:absolute;right:10px;bottom:10px;z-index:10;display:flex;gap:8px;}
   .btn {width:80px;height:48px;border-radius:8px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;user-select:none;-webkit-user-select:none;}
   #message {position:absolute;left:50%;top:60%;transform:translateX(-50%);background:rgba(0,0,0,0.5);padding:8px 12px;border-radius:8px;z-index:20;}
   #tiltBtn {position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#2a9d8f;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:16px;z-index:30;}
-  canvas {display:block;width:100%;height:100%;background:#222;}
+  canvas {display:block;width:100%;height:100%;background:#000;}
 </style>
 </head>
 <body>
@@ -95,6 +95,8 @@ function applyPoop(){
   <div id="accel" class="btn">ACCEL</div>
 </div>
 
+ 
+
 <div id="message">傾けてハンドル、タップでアクセル／ブレーキ！</div>
 <button id="tiltBtn">傾き操作を有効にする</button>
 
@@ -118,7 +120,11 @@ let accelPower=6,brakePower=10;
 let steerSensitivity=0.05;
 let pos={x:0,z:0};
 let cam={x:0,y:0};
-let goalDistance=1200,timer=60,running=true,damage=0;
+// 周回コース設定
+let trackLength=1200, lapsNeeded=1, lapsCompleted=0;
+let goalDistance=trackLength, timer=60, running=true, damage=0;
+// HUD にトラック長を表示
+HUD.goalDistEl.textContent = trackLength;
 let lastCollision=-999,collisionCooldown=1;
 let input={accel:false,brake:false,gamma:0};
 let wheelie={active:false,timer:0,angle:0};
@@ -136,7 +142,8 @@ function roadWidthAt(z){return width*(0.3+0.15*Math.sin(z/400));}
 const types=["cone","car","poop"];
 function generateObstacles(){
   obstacles=[];
-  for(let i=100;i<goalDistance;i+=100+Math.random()*150){
+  // 周回コース用にトラック長 (trackLength) の範囲で障害物を生成
+  for(let i=50;i<trackLength;i+=100+Math.random()*150){
     obstacles.push({
       z:i,
       x:(Math.random()*2-1)*(width*0.25),
@@ -214,10 +221,8 @@ function draw(){
   ctx.rotate(tiltAngle*0.005);
   ctx.translate(-width/2,-height/2);
 
-  const gradient=ctx.createLinearGradient(0,0,0,height);
-  gradient.addColorStop(0,"#222");
-  gradient.addColorStop(1,"#333");
-  ctx.fillStyle=gradient;
+  // 背景を黒一色に変更
+  ctx.fillStyle = '#000';
   ctx.beginPath();
   ctx.moveTo(roadCenterX-roadHalfWidth,0);
   ctx.lineTo(roadCenterX+roadHalfWidth,0);
@@ -246,9 +251,11 @@ function draw(){
 
   // 障害物
   for(let ob of obstacles){
-    const relZ=ob.z-pos.z;
-    if(relZ<0||relZ>120)continue;
-    const y=height-relZ*10;
+  // 周回コース対応: 相対Zをトラック長で補正して前方のみを描画
+  let relZ = ob.z - pos.z;
+  if(relZ < 0) relZ += trackLength;
+  if(relZ > 120) continue; // 描画範囲外
+  const y = height - relZ * 10;
     const x=roadCenterX+ob.x;
     if(ob.type==="cone"){
       ctx.fillStyle="#fa0";
@@ -269,7 +276,8 @@ function draw(){
     if(Math.abs(dx)<ob.size&&Math.abs(dy)<ob.size){
       if(ob.type==="poop"){applyPoop();}
       else applyCollision();
-      ob.z+=9999;
+      // 衝突した障害物はトラック外に移動させる
+      ob.z = (ob.z + trackLength) % (trackLength + 10000);
     }
   }
 
@@ -284,7 +292,8 @@ function draw(){
   ctx.restore();
 
   HUD.timerEl.textContent=timer.toFixed(2);
-  HUD.distanceEl.textContent=Math.min(pos.z,goalDistance).toFixed(1);
+  // 距離表示は周回内の距離を表示（pos.z がトラック内に収まるようにしたため直接表示）
+  HUD.distanceEl.textContent = pos.z.toFixed(1);
   HUD.speedEl.textContent=speed.toFixed(2);
   HUD.damageEl.textContent=Math.round(damage);
 }
@@ -319,6 +328,16 @@ function update(){
   pos.x+=(-input.gamma*steerSensitivity)*dt*500*(wheelie.active?1.4:1);
   pos.z+=speed*dt*10;
 
+  // 周回処理: トラック長を超えたら周回カウント
+  if(pos.z >= trackLength){
+    pos.z -= trackLength;
+    lapsCompleted++;
+    if(lapsCompleted >= lapsNeeded){
+      running = false;
+      showResult(true);
+    }
+  }
+
   const roadCenterX=width/2+roadCurve(pos.z);
   const roadHalfWidth=roadWidthAt(pos.z);
   if(Math.abs(pos.x)>roadHalfWidth-20){
@@ -329,7 +348,7 @@ function update(){
 
   if(wheelie.active&&Math.random()<0.3)addParticle(width/2+pos.x,height*0.8,"spark");
   updateParticles(dt);
-  if(pos.z>=goalDistance){running=false;showResult(true);}
+  // 周回化により直線ゴールの判定は不要（周回カウントでゴール判定を行う）
   if(shakeEffect>0)shakeEffect-=dt*2;
   if(flashAlpha>0)flashAlpha-=dt*3;
 }
@@ -351,13 +370,14 @@ function applyPoop(){
     baseSpeed=20;
     shakeEffect=0.6;
     flashAlpha=0.3;
+    showBurningText();
   }
   addParticle(width/2+pos.x,height*0.85,"flame");
 }
 
 function showResult(clear){
   setTimeout(()=>{
-    alert(clear?`★ GOAL!\nDamage:${Math.round(damage)}%\nDistance:${goalDistance}`:`✖ TIME UP\nDamage:${Math.round(damage)}%\nDistance:${pos.z.toFixed(1)} / ${goalDistance}`);
+  alert(clear?`★ GOAL!\nDamage:${Math.round(damage)}%\nDistance:${trackLength}`:`✖ TIME UP\nDamage:${Math.round(damage)}%\nDistance:${pos.z.toFixed(1)} / ${trackLength}`);
     if(confirm("Retry?"))resetGame();
   },100);
 }
@@ -365,7 +385,9 @@ function resetGame(){
   pos={x:0,z:0};speed=0;timer=60;damage=0;
   wheelie={active:false,timer:0,angle:0};
   particles=[];running=true;burningMode=false;baseSpeed=12;
-  obstacles.forEach(o=>o.z-=goalDistance);
+  lapsCompleted = 0;
+  // 障害物は再生成して位置をリセット
+  generateObstacles();
 }
 
 function loop(){if(running)update();draw();requestAnimationFrame(loop);}
