@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>猫クールバトル🔥超ゴージャスパーティモード</title>
+<style>
+  body { margin:0; background:#110022; overflow:hidden; font-family:sans-serif;}
+  canvas { display:block; margin:0 auto; background:#220044;}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const WIDTH = canvas.width;
+const HEIGHT = canvas.height;
+const TILE_SIZE = 400;
+const MAP_SIZE = 3;
+
+let gameState = 'playing';
+
+const cat = { x: TILE_SIZE + TILE_SIZE/2, y: TILE_SIZE + TILE_SIZE/2, size: 120, speed: 5, party: false, hp: 100, attackCooldown: 0 };
+const enemy = { x: TILE_SIZE*2, y: TILE_SIZE*2, size: 100, hp: 80, speed: 2, party: false, attackCooldown: 0 };
+const item = { x: TILE_SIZE*2 + TILE_SIZE/2, y: TILE_SIZE + TILE_SIZE/2, radius: 20, taken: false };
+const keys = {};
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+const particles = [];
+const kanjiList = ['🔥','火','轟','煌','⚡','💥','炎','雷','爆'];
+
+function createParticle(x,y,vx,vy,char=null,fromEnemy=false,party=false){
+    const color = party ? `rgb(${200+Math.random()*55},${50+Math.random()*205},0)` : '#fff';
+    particles.push({x,y,vx,vy,life:party?80:60,char:char||kanjiList[Math.floor(Math.random()*kanjiList.length)],fromEnemy,partyColor:color});
+}
+
+// 猫自動攻撃
+function catAutoAttack(){
+    if(cat.attackCooldown>0){ cat.attackCooldown--; return; }
+    const dx = enemy.x - cat.x;
+    const dy = enemy.y - cat.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    if(dist===0) return;
+    if(cat.party){
+        // ゴージャスパーティクル大量発射
+        for(let i=0;i<6;i++){
+            const angle = Math.atan2(dy,dx) + (Math.random()-0.5)*1.5;
+            const speed = 4 + Math.random()*6;
+            createParticle(cat.x,cat.y,Math.cos(angle)*speed,Math.sin(angle)*speed, kanjiList[Math.floor(Math.random()*kanjiList.length)], false, true);
+        }
+    } else {
+        createParticle(cat.x,cat.y,dx/dist*6,dy/dist*6,'🔥', false);
+    }
+    cat.attackCooldown = 20;
+}
+
+// 敵自動攻撃
+function enemyAutoAttack(){
+    if(enemy.attackCooldown>0){ enemy.attackCooldown--; return; }
+    const dx = cat.x - enemy.x;
+    const dy = cat.y - enemy.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    if(dist===0) return;
+    if(enemy.party){
+        for(let i=0;i<6;i++){
+            const angle = Math.atan2(dy,dx) + (Math.random()-0.5)*1.5;
+            const speed = 4 + Math.random()*6;
+            createParticle(enemy.x,enemy.y,Math.cos(angle)*speed,Math.sin(angle)*speed, kanjiList[Math.floor(Math.random()*kanjiList.length)], true, true);
+        }
+        enemy.attackCooldown = 15;
+    } else {
+        createParticle(enemy.x,enemy.y,dx/dist*4,dy/dist*4,'💥', true);
+        enemy.attackCooldown = 100;
+    }
+}
+
+// パーティクル更新
+function updateParticles(){
+    for(let i=particles.length-1;i>=0;i--){
+        const p=particles[i];
+        p.x+=p.vx; p.y+=p.vy; p.life--;
+        if(p.life<=0){ particles.splice(i,1); continue; }
+        if(gameState!=='playing') continue;
+        if(p.fromEnemy){
+            const dx = p.x - cat.x, dy = p.y - cat.y;
+            if(Math.sqrt(dx*dx+dy*dy)<cat.size/2){ cat.hp-=2; particles.splice(i,1);}
+        } else {
+            const dx = p.x - enemy.x, dy = p.y - enemy.y;
+            if(Math.sqrt(dx*dx+dy*dy)<enemy.size/2){ enemy.hp-=2; particles.splice(i,1);}
+        }
+    }
+}
+
+let bgOffsetX=0, bgOffsetY=0;
+
+function update(){
+    if(gameState!=='playing') return;
+    if(keys['ArrowLeft']) { cat.x-=cat.speed; bgOffsetX+=cat.speed*0.5; }
+    if(keys['ArrowRight']){ cat.x+=cat.speed; bgOffsetX-=cat.speed*0.5; }
+    if(keys['ArrowUp'])   { cat.y-=cat.speed; bgOffsetY+=cat.speed*0.5; }
+    if(keys['ArrowDown']) { cat.y+=cat.speed; bgOffsetY-=cat.speed*0.5; }
+
+    catAutoAttack();
+
+    cat.x = Math.max(cat.size/2, Math.min(cat.x, TILE_SIZE*MAP_SIZE - cat.size/2));
+    cat.y = Math.max(cat.size/2, Math.min(cat.y, TILE_SIZE*MAP_SIZE - cat.size/2));
+
+    if(!item.taken){
+        let dx = cat.x - item.x, dy = cat.y - item.y;
+        if(Math.sqrt(dx*dx+dy*dy)<cat.size/2+item.radius){ item.taken=true; cat.party=true; }
+        dx = enemy.x - item.x; dy = enemy.y - item.y;
+        if(Math.sqrt(dx*dx+dy*dy)<enemy.size/2+item.radius){ item.taken=true; enemy.party=true; }
+    }
+
+    const dx = cat.x - enemy.x, dy = cat.y - enemy.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    if(dist>0){ enemy.x+=dx/dist*enemy.speed; enemy.y+=dy/dist*enemy.speed; }
+
+    enemyAutoAttack();
+
+    const dx2 = cat.x - enemy.x, dy2 = cat.y - enemy.y;
+    if(Math.sqrt(dx2*dx2+dy2*dy2)<cat.size/2+enemy.size/2){ cat.hp-=0.5; }
+
+    updateParticles();
+
+    if(enemy.hp<=0) gameState='victory';
+    if(cat.hp<=0) gameState='gameover';
+}
+
+function draw(){
+    ctx.clearRect(0,0,WIDTH,HEIGHT);
+    const offsetX = cat.x-WIDTH/2;
+    const offsetY = cat.y-HEIGHT/2;
+    ctx.save();
+    ctx.translate(-offsetX,-offsetY);
+
+    // 背景（常に通常色）
+    for(let i=-1;i<=MAP_SIZE;i++){
+        for(let j=-1;j<=MAP_SIZE;j++){
+            const x=i*TILE_SIZE+bgOffsetX%TILE_SIZE;
+            const y=j*TILE_SIZE+bgOffsetY%TILE_SIZE;
+            ctx.fillStyle='#220044';
+            ctx.fillRect(x,y,TILE_SIZE,TILE_SIZE);
+        }
+    }
+
+    // アイテム
+    if(!item.taken){
+        ctx.fillStyle='yellow';
+        ctx.beginPath(); ctx.arc(item.x,item.y,item.radius,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='#fff'; ctx.stroke();
+    }
+
+    // 敵
+    if(gameState!=='gameover'){
+        ctx.fillStyle='#880000';
+        ctx.beginPath(); ctx.arc(enemy.x,enemy.y,enemy.size/2,0,Math.PI*2); ctx.fill();
+    }
+
+    // 猫
+    if(gameState!=='gameover'){
+        ctx.save();
+        ctx.translate(cat.x,cat.y);
+        ctx.beginPath(); ctx.arc(0,0,cat.size/2,0,Math.PI*2);
+        ctx.fillStyle='#ffcc88'; ctx.fill();
+        ctx.strokeStyle='#000'; ctx.lineWidth=4; ctx.stroke();
+        ctx.restore();
+    }
+
+    // パーティクル描画
+    particles.forEach(p=>{
+        ctx.fillStyle=p.partyColor||'#fff';
+        ctx.font='30px serif';
+        ctx.fillText(p.char,p.x,p.y);
+    });
+
+    ctx.restore();
+
+    // HP表示
+    ctx.fillStyle='#fff'; ctx.font='30px sans-serif';
+    ctx.fillText('猫HP:'+Math.max(0,Math.floor(cat.hp)),50,50);
+    ctx.fillText('敵HP:'+Math.max(0,Math.floor(enemy.hp)),50,90);
+
+    // パーティモード演出（背景は変えない）
+    if(cat.party || enemy.party){
+        ctx.font='60px sans-serif';
+        ctx.fillStyle='#ffff00';
+        ctx.strokeStyle='#ff0000';
+        ctx.lineWidth=6;
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        ctx.strokeText('🔥最強パーティモード🔥', WIDTH/2, HEIGHT/2);
+        ctx.fillText('🔥最強パーティモード🔥', WIDTH/2, HEIGHT/2);
+    }
+
+    // 勝利/ゲームオーバー演出（背景赤基調）
+    if(gameState==='victory'){
+        ctx.fillStyle='rgba(255,0,0,0.4)';
+        ctx.fillRect(0,0,WIDTH,HEIGHT);
+        ctx.font='80px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.strokeStyle='#ff0000'; ctx.lineWidth=8; ctx.fillStyle='#ffff00';
+        ctx.strokeText('🎉 勝利！ 🎉', WIDTH/2, HEIGHT/2);
+        ctx.fillText('🎉 勝利！ 🎉', WIDTH/2, HEIGHT/2);
+    } else if(gameState==='gameover'){
+        ctx.fillStyle='rgba(0,0,0,0.5)';
+        ctx.fillRect(0,0,WIDTH,HEIGHT);
+        ctx.font='80px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.strokeStyle='#000'; ctx.lineWidth=8; ctx.fillStyle='#ff0000';
+        ctx.strokeText('💀 ゲームオーバー 💀', WIDTH/2, HEIGHT/2);
+        ctx.fillText('💀 ゲームオーバー 💀', WIDTH/2, HEIGHT/2);
+    }
+}
+
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>
