@@ -3,25 +3,31 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Bike Run - Simplified</title>
+<title>Bike Run - Tilt Control</title>
 <style>
-  html,body { margin:0; padding:0; height:100%; overflow:hidden; font-family: sans-serif; background:#111; color:#fff;}
+  html,body { margin:0; padding:0; height:100%; overflow:hidden; font-family:sans-serif; background:#111; color:#fff; }
   #container { width:100%; height:100%; display:block; position:relative; }
   #hud {
-    position:absolute; top:10px; left:10px; z-index:10; background:rgba(0,0,0,0.35); padding:8px 10px; border-radius:8px;
+    position:absolute; top:10px; left:10px; z-index:10; background:rgba(0,0,0,0.35);
+    padding:8px 10px; border-radius:8px;
   }
   #hud div { margin:4px 0; font-size:14px; }
   #controls {
     position:absolute; right:10px; bottom:10px; z-index:10; display:flex; gap:8px;
   }
   .btn {
-    width:80px; height:48px; border-radius:8px; display:flex; align-items:center; justify-content:center; 
+    width:80px; height:48px; border-radius:8px; display:flex; align-items:center; justify-content:center;
     background:rgba(255,255,255,0.08); color:#fff; font-size:14px; user-select:none;
     -webkit-user-select:none;
   }
-  #message { 
+  #message {
     position:absolute; left:50%; top:60%; transform:translateX(-50%);
     z-index:20; background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:8px;
+  }
+  #permissionBtn {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    background:#28a745; color:#fff; padding:12px 20px; border:none; border-radius:8px;
+    font-size:16px; z-index:30;
   }
 </style>
 </head>
@@ -40,18 +46,16 @@
   <div id="accel" class="btn">ACCEL</div>
 </div>
 
-<div id="message">Tilt left/right to steer. Tap left/right to Brake/Accel.</div>
+<div id="message">スマホを左右に傾けて操作！</div>
+<button id="permissionBtn">▶ センサー許可</button>
 
-<!-- Three.js -->
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-
 <script>
 let scene, camera, renderer;
 let bike, road, leftWall, rightWall;
 let clock = new THREE.Clock();
 
 const container = document.getElementById('container');
-
 const HUD = {
   timerEl: document.getElementById('timer'),
   distanceEl: document.getElementById('distance'),
@@ -60,8 +64,8 @@ const HUD = {
   damageEl: document.getElementById('damage'),
 };
 
-// game params
-let baseSpeed = 12.0; // m/s nominal
+// === ゲームパラメータ ===
+let baseSpeed = 12.0;
 let speed = 0;
 let accelPower = 6.0;
 let brakePower = 10.0;
@@ -76,29 +80,48 @@ let lastCollisionAt = -999;
 let collisionCooldown = 1.0;
 let fallCooldown = 0;
 
-// input state
+// === 入力状態 ===
 let input = { accel:false, brake:false, gamma:0 };
 
-// UI
-document.getElementById('goalDist').innerText = String(goalDistance);
+HUD.goalDistEl.innerText = String(goalDistance);
 
-// touch controls
+// --- タッチ操作 ---
 document.getElementById('accel').addEventListener('touchstart', e=>{ e.preventDefault(); input.accel = true; });
 document.getElementById('accel').addEventListener('touchend', e=>{ e.preventDefault(); input.accel = false; });
 document.getElementById('brake').addEventListener('touchstart', e=>{ e.preventDefault(); input.brake = true; });
 document.getElementById('brake').addEventListener('touchend', e=>{ e.preventDefault(); input.brake = false; });
 
-// fallback for desktop
+// --- デスクトップ操作（クリック切替） ---
 document.getElementById('accel').addEventListener('click', ()=> input.accel = !input.accel);
 document.getElementById('brake').addEventListener('click', ()=> input.brake = !input.brake);
 
-// device orientation
-function handleOrientation(e) {
-  input.gamma = e.gamma || 0;
+// --- デバイス傾きイベント ---
+function handleOrientation(e){
+  if (e.gamma !== null) input.gamma = e.gamma; // gammaは左右の傾き（-90～90）
 }
-window.addEventListener('deviceorientation', handleOrientation, true);
 
-// init
+// iPhone向け：ユーザー許可が必要
+document.getElementById('permissionBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('permissionBtn');
+  if (typeof DeviceOrientationEvent !== "undefined" &&
+      typeof DeviceOrientationEvent.requestPermission === "function") {
+    const res = await DeviceOrientationEvent.requestPermission();
+    if (res === "granted") {
+      window.addEventListener('deviceorientation', handleOrientation, true);
+      btn.style.display = 'none';
+      startGame();
+    } else {
+      alert("センサーの使用が許可されませんでした。");
+    }
+  } else {
+    // Android等ではそのまま利用可
+    window.addEventListener('deviceorientation', handleOrientation, true);
+    btn.style.display = 'none';
+    startGame();
+  }
+});
+
+// === 初期化 ===
 function init(){
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x222222);
@@ -112,7 +135,6 @@ function init(){
   container.appendChild(renderer.domElement);
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-  hemi.position.set(0, 50, 0);
   scene.add(hemi);
 
   const dir = new THREE.DirectionalLight(0xffffff, 0.6);
@@ -132,7 +154,7 @@ function init(){
   rightWall = new THREE.Mesh(wallGeo, wallMat);
   leftWall.position.set(-roadHalfWidth - 0.5, 1.2, 1000);
   rightWall.position.set(roadHalfWidth + 0.5, 1.2, 1000);
-  scene.add(leftWall); scene.add(rightWall);
+  scene.add(leftWall, rightWall);
 
   const bikeGeo = new THREE.BoxGeometry(0.6, 0.6, 1.6);
   const bikeMat = new THREE.MeshStandardMaterial({ color:0x2a9d8f });
@@ -147,7 +169,7 @@ function init(){
     const signR = new THREE.Mesh(small, mat);
     signL.position.set(-roadHalfWidth-1, 0.25, i*40);
     signR.position.set(roadHalfWidth+1, 0.25, i*40);
-    scene.add(signL); scene.add(signR);
+    scene.add(signL, signR);
   }
 
   window.addEventListener('resize', onWindowResize, false);
@@ -159,18 +181,13 @@ function onWindowResize(){
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// game start
 function startGame(){
   running = true;
   position.x = 0; position.z = 0;
-  speed = 0;
-  timer = 60;
-  damage = 0;
-  lastCollisionAt = -999;
-  fallCooldown = 0;
+  speed = 0; timer = 60; damage = 0;
+  lastCollisionAt = -999; fallCooldown = 0;
 }
 
-// animate
 function animate(){
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -180,11 +197,7 @@ function animate(){
 
 function update(dt){
   timer -= dt;
-  if (timer <= 0) {
-    timer = 0;
-    running = false;
-    showResult(false);
-  }
+  if (timer <= 0) { timer = 0; running = false; showResult(false); }
 
   const damageFactor = Math.min(damage/100, 0.9);
   const effectiveMaxSpeed = baseSpeed * (1 - damageFactor);
@@ -194,9 +207,11 @@ function update(dt){
   if (input.brake) speed -= brakePower * dt;
   speed = Math.max(0, Math.min(effectiveMaxSpeed, speed));
 
-  const desiredX = position.x + (-input.gamma * steerSensitivity) * dt * 60;
-  position.x += (desiredX - position.x) * 0.2;
+  // ← 傾きによる左右移動（gammaは右傾きで＋）
+  const tilt = THREE.MathUtils.clamp(input.gamma, -45, 45);
+  position.x += -tilt * steerSensitivity * dt * 60;
 
+  position.x = THREE.MathUtils.clamp(position.x, -roadHalfWidth-0.5, roadHalfWidth+0.5);
   position.z += speed * dt * 10;
   bike.position.set(position.x, 0.6, position.z);
 
@@ -204,37 +219,12 @@ function update(dt){
   camera.position.lerp(new THREE.Vector3(position.x, 4.0, position.z - 8.0), 0.12);
   camera.lookAt(camTarget);
 
-  if (Math.abs(position.x) > roadHalfWidth) {
-    const now = performance.now()/1000;
-    if (now - lastCollisionAt > collisionCooldown) {
-      lastCollisionAt = now;
-      applyCollision();
-    }
-    position.x = THREE.MathUtils.clamp(position.x, -roadHalfWidth-0.5, roadHalfWidth+0.5);
-    speed *= 0.6;
-  }
-
   HUD.timerEl.innerText = timer.toFixed(2);
   HUD.distanceEl.innerText = Math.min(position.z, goalDistance).toFixed(1);
   HUD.speedEl.innerText = speed.toFixed(2);
   HUD.damageEl.innerText = Math.round(damage);
 
-  if (position.z >= goalDistance) {
-    running = false;
-    showResult(true);
-  }
-
-  if (fallCooldown > 0) fallCooldown -= dt;
-}
-
-function applyCollision(){
-  const timePenalty = 3.0;
-  timer = Math.max(0, timer - timePenalty);
-  damage += 12;
-  damage = Math.min(100, damage);
-  bike.material.color.setHex(0xff6b6b);
-  setTimeout(()=> bike.material.color.setHex(0x2a9d8f), 300);
-  position.z = Math.max(0, position.z - 4.0);
+  if (position.z >= goalDistance) { running = false; showResult(true); }
 }
 
 function showResult(cleared){
@@ -245,10 +235,9 @@ function showResult(cleared){
   if (confirm("Retry?")) startGame();
 }
 
-// --- auto start ---
+// --- 実行 ---
 init();
 animate();
-startGame();
 </script>
 </body>
 </html>
