@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>ピアスホールバトル - 統合版</title>
+<style>
+  body { margin:0; background:#ffe4e1; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; font-family:sans-serif; overflow:hidden;}
+  canvas { background:#fff; border:2px solid #000; }
+  #score { margin-top:10px; font-size:18px; }
+  #message { margin-top:5px; font-size:16px; }
+</style>
+</head>
+<body>
+<canvas id="game" width="400" height="400"></canvas>
+<div id="score">スコア: 0 | コンボ: 0 | HP: 100</div>
+<div id="message">バーの中心でクリックしてピアス発射！</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreDisplay = document.getElementById("score");
+const message = document.getElementById("message");
+
+// ゲーム状態
+let score = 0;
+let combo = 0;
+let hp = 100;
+
+// 耳たぶ
+const ear = { x:200, y:250, w:100, h:140 };
+
+// タイミングバー
+const bar = { x:50, y:50, w:300, h:20, pos:0, dir:1 };
+
+// 発射中のピアス
+let bullets = [];
+// ピアスホール
+let holes = [];
+// パーティクル
+let particles = [];
+
+// ピアス種類
+const types = ["heart","star","note","sparkle"];
+
+// 描画関数
+function drawEar(){
+  const grad = ctx.createLinearGradient(ear.x-ear.w/2, ear.y-ear.h/2, ear.x+ear.w/2, ear.y+ear.h/2);
+  grad.addColorStop(0,"#fcd5b4");
+  grad.addColorStop(1,"#f9a66c");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(ear.x, ear.y);
+  ctx.bezierCurveTo(ear.x-ear.w/2, ear.y-ear.h/4, ear.x-ear.w/2, ear.y+ear.h/2, ear.x, ear.y+ear.h/2);
+  ctx.bezierCurveTo(ear.x+ear.w/2, ear.y+ear.h/2, ear.x+ear.w/2, ear.y-ear.h/4, ear.x, ear.y);
+  ctx.fill();
+}
+
+function drawHoles(){
+  for(let h of holes){
+    ctx.strokeStyle = "purple";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(h.x,h.y,8,0,Math.PI*2);
+    ctx.stroke();
+  }
+}
+
+function drawBar(){
+  ctx.fillStyle = "#ccc";
+  ctx.fillRect(bar.x, bar.y, bar.w, bar.h);
+  ctx.fillStyle = "#666";
+  ctx.fillRect(bar.x + bar.pos -5, bar.y, 10, bar.h);
+}
+
+function drawBullets(){
+  for(let b of bullets){
+    switch(b.type){
+      case "heart": ctx.fillStyle="#ff6666"; break;
+      case "star": ctx.fillStyle="#ffff66"; break;
+      case "note": ctx.fillStyle="#66ccff"; break;
+      case "sparkle": ctx.fillStyle="#ffccff"; break;
+    }
+    ctx.beginPath();
+    ctx.arc(b.x,b.y,6,0,Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function drawParticles(){
+  for(let p of particles){
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// パーティクル追加（軽量化）
+function addParticles(x,y,type){
+  let colors;
+  switch(type){
+    case "heart": colors=["#ff99cc","#ff6666"]; break;
+    case "star": colors=["#ffff66","#ffcc66"]; break;
+    case "note": colors=["#66ccff","#99ccff"]; break;
+    case "sparkle": colors=["#ffccff","#cc99ff","#66ffcc"]; break;
+  }
+  for(let i=0;i<10+combo*3;i++){ // コンボで増加
+    particles.push({
+      x,y,
+      vx: Math.random()*4-2,
+      vy: Math.random()*-4,
+      alpha:1,
+      color: colors[Math.floor(Math.random()*colors.length)],
+      size: Math.random()*4+3
+    });
+  }
+}
+
+// ゲームロジック
+canvas.addEventListener("click",()=>{
+  const center = bar.x + bar.pos;
+  const dist = Math.abs(center - ear.x);
+  const type = types[Math.floor(Math.random()*types.length)];
+
+  if(dist < 20){ // 成功判定
+    bullets.push({x:200, y:380, vx:(ear.x-200)/50, vy:(ear.y-380)/50, type});
+  } else { // ミス
+    hp -=10;
+    combo =0;
+    message.textContent="痛い！えーんえーん！";
+  }
+});
+
+function updateBar(){
+  bar.pos += bar.dir*3;
+  if(bar.pos>bar.w || bar.pos<0) bar.dir*=-1;
+}
+
+function updateBullets(){
+  for(let b of bullets){
+    b.x += b.vx*10;
+    b.y += b.vy*10;
+    const dx = b.x - ear.x;
+    const dy = b.y - ear.y;
+    if(Math.sqrt(dx*dx+dy*dy)<50){
+      holes.push({x:ear.x,y:ear.y});
+      combo++;
+      score +=10*combo;
+
+      // ピアス効果
+      switch(b.type){
+        case "heart": hp=Math.min(100,hp+20); break;
+        case "star": bar.dir*=1.2; break;
+        case "note": message.textContent="耳が踊る♪"; break;
+        case "sparkle": addParticles(ear.x, ear.y,"sparkle"); break;
+      }
+
+      addParticles(ear.x, ear.y,b.type);
+      bullets = bullets.filter(bl=>bl!==b);
+    }
+    if(b.x<0||b.x>400||b.y<0||b.y>400) bullets = bullets.filter(bl=>bl!==b);
+  }
+}
+
+function updateParticles(){
+  for(let p of particles){
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy +=0.1;
+    p.alpha -=0.03;
+  }
+  particles = particles.filter(p=>p.alpha>0);
+}
+
+// メインループ
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawEar();
+  drawHoles();
+  drawBar();
+  drawBullets();
+  drawParticles();
+  updateBar();
+  updateBullets();
+  updateParticles();
+  scoreDisplay.textContent = `スコア: ${score} | コンボ: ${combo} | HP: ${hp}`;
+  requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+</body>
+</html>
