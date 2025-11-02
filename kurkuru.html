@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>棒をくるくる回して軌跡を描く</title>
+<style>
+  :root{--bg:#0b1220;--panel:#0f1724;--accent:#6ee7b7}
+  html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',sans-serif;background:var(--bg);color:#e6eef6}
+  .wrap{display:flex;gap:16px;height:100%;padding:20px;box-sizing:border-box}
+  canvas{flex:1;border-radius:12px;background:linear-gradient(180deg,#041226 0%, #071827 100%);box-shadow:0 6px 24px rgba(0,0,0,0.6)}
+  .panel{width:320px;background:var(--panel);border-radius:12px;padding:16px;box-sizing:border-box;box-shadow:0 6px 24px rgba(0,0,0,0.5)}
+  h1{font-size:16px;margin:0 0 12px}
+  label{display:block;font-size:13px;margin-top:10px}
+  input[type=range]{width:100%}
+  .row{display:flex;gap:8px;align-items:center}
+  .btn{appearance:none;border:0;padding:8px 12px;border-radius:8px;background:var(--accent);color:#042226;cursor:pointer;font-weight:600}
+  .small{font-size:13px}
+  footer{font-size:12px;opacity:0.8;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="c"></canvas>
+  <div class="panel">
+    <h1>棒をくるくる回して軌跡を描く</h1>
+    <div class="small">中心から伸びる棒が回転して残像（軌跡）を描きます。コントロールで動きを調整してください。</div>
+
+    <label>回転速度（deg / s） <span id="speedVal">120</span></label>
+    <input id="speed" type="range" min="-1000" max="1000" value="120">
+
+    <label>棒の長さ（px） <span id="lenVal">220</span></label>
+    <input id="length" type="range" min="20" max="1000" value="220">
+
+    <label>線の太さ（px） <span id="thickVal">2</span></label>
+    <input id="thick" type="range" min="1" max="24" value="2">
+
+    <label>残像フェード（0＝残しっぱなし, 1＝すぐ消える） <span id="fadeVal">0.08</span></label>
+    <input id="fade" type="range" min="0" max="1" step="0.01" value="0.08">
+
+    <label>色</label>
+    <div class="row">
+      <input id="color" type="color" value="#6ee7b7">
+      <button id="invert" class="btn">背景反転</button>
+    </div>
+
+    <label style="margin-top:12px">アニメーション</label>
+    <div class="row">
+      <button id="play" class="btn">再生</button>
+      <button id="pause" class="btn" style="background:#f97373;color:#fff">停止</button>
+      <button id="clear" class="btn" style="background:#60a5fa;color:#fff">クリア</button>
+    </div>
+
+    <label>オプション</label>
+    <div class="row small">
+      <input id="multi" type="checkbox"><label for="multi" style="margin:0">複数の棒を表示</label>
+    </div>
+
+    <footer>このページをローカルに保存してブラウザで開くだけで動きます。</footer>
+  </div>
+</div>
+
+<script>
+(() => {
+  const c = document.getElementById('c');
+  const ctx = c.getContext('2d');
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+
+  function resize(){
+    c.width = Math.floor(c.clientWidth * dpr);
+    c.height = Math.floor(c.clientHeight * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize', resize);
+
+  // Controls
+  const speedS = document.getElementById('speed');
+  const lenS = document.getElementById('length');
+  const thickS = document.getElementById('thick');
+  const fadeS = document.getElementById('fade');
+  const colorI = document.getElementById('color');
+  const playBtn = document.getElementById('play');
+  const pauseBtn = document.getElementById('pause');
+  const clearBtn = document.getElementById('clear');
+  const invertBtn = document.getElementById('invert');
+  const multiChk = document.getElementById('multi');
+
+  const speedVal = document.getElementById('speedVal');
+  const lenVal = document.getElementById('lenVal');
+  const thickVal = document.getElementById('thickVal');
+  const fadeVal = document.getElementById('fadeVal');
+
+  function updUI(){
+    speedVal.textContent = speedS.value;
+    lenVal.textContent = lenS.value;
+    thickVal.textContent = thickS.value;
+    fadeVal.textContent = fadeS.value;
+  }
+  [speedS,lenS,thickS,fadeS].forEach(el=>el.addEventListener('input', updUI));
+  updUI();
+
+  // state
+  let last = performance.now();
+  let running = true;
+  let angle = 0; // radians
+
+  // background color toggle
+  let bgLight = false;
+  invertBtn.addEventListener('click', ()=>{
+    bgLight = !bgLight;
+    document.documentElement.style.setProperty('--bg', bgLight ? '#f6fbff' : '#0b1220');
+    document.documentElement.style.setProperty('--panel', bgLight ? '#ffffff' : '#0f1724');
+    document.documentElement.style.setProperty('--accent', bgLight ? '#2563eb' : '#6ee7b7');
+  });
+
+  playBtn.addEventListener('click', ()=>{ running = true; last = performance.now(); loop(last); });
+  pauseBtn.addEventListener('click', ()=>{ running = false; });
+  clearBtn.addEventListener('click', ()=>{ ctx.clearRect(0,0,c.width/dpr,c.height/dpr); });
+
+  // initialize size
+  function fitCanvasToParent(){
+    // canvas fills available area; set style size
+    c.style.width = (window.innerWidth - 380) + 'px';
+    c.style.height = (window.innerHeight - 40) + 'px';
+    resize();
+  }
+  window.addEventListener('resize', fitCanvasToParent);
+  fitCanvasToParent();
+
+  function drawStick(cx, cy, ang, length, width, strokeStyle){
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(ang) * length, cy + Math.sin(ang) * length);
+    ctx.strokeStyle = strokeStyle;
+    ctx.stroke();
+  }
+
+  function loop(now){
+    if(!running) return;
+    const dt = (now - last) / 1000; // seconds
+    last = now;
+
+    const speed = Number(speedS.value) * Math.PI / 180; // deg/s -> rad/s
+    const length = Number(lenS.value);
+    const thickness = Number(thickS.value);
+    const fade = Number(fadeS.value);
+    const color = colorI.value;
+
+    // fade the previous frame by drawing a translucent rectangle
+    if(fade <= 0){
+      // no fade: do nothing (infinite trail)
+    } else {
+      ctx.fillStyle = (bgLight ? 'rgba(255,255,255,'+fade+')' : 'rgba(4,6,12,'+fade+')');
+      ctx.fillRect(0,0,c.width/dpr,c.height/dpr);
+    }
+
+    const cx = c.width/dpr/2;
+    const cy = c.height/dpr/2;
+
+    // update angle
+    angle += speed * dt;
+
+    // draw center point
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(2, thickness+1), 0, Math.PI*2); ctx.fill();
+
+    // draw 1 or multiple sticks
+    if(multiChk.checked){
+      const count = 6;
+      for(let i=0;i<count;i++){
+        const a = angle + (i * Math.PI*2 / count);
+        // vary stroke alpha across sticks
+        const alpha = 0.6 - (i/count)*0.5;
+        drawStick(cx, cy, a, length, thickness, hexWithAlpha(color, alpha));
+      }
+    } else {
+      drawStick(cx, cy, angle, length, thickness, color);
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  // small helper to apply alpha to hex color
+  function hexWithAlpha(hex, alpha){
+    // hex: #rrggbb
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  // start
+  ctx.fillStyle = (bgLight ? '#fff' : '#041226');
+  ctx.fillRect(0,0,c.width/dpr,c.height/dpr);
+  last = performance.now();
+  requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

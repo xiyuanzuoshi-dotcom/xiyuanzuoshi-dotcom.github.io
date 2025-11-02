@@ -1,415 +1,168 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>ビーチフラッグバトル ステップ2</title>
+<title>ふわもこぷにん惑星ゲーム</title>
 <style>
-/* ====== 既存ゲームスタイル ====== */
-html,body{height:100%;margin:0;background:#012;color:#fff;font-family:sans-serif;}
-#game{display:block;margin:0 auto;background:radial-gradient(circle at center, #034 0%, #001 80%);}
-#hud{position:fixed;left:12px;top:12px;font-size:18px;}
-#overlay{position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;background:rgba(0,0,0,0.6);color:white;z-index:10;visibility:hidden;}
-#overlay.visible{visibility:visible;}
-button{padding:10px 18px;border-radius:8px;border:0;background:#06f;color:white;font-weight:700;}
-
-/* ====== 導入演出用スタイル ====== */
-#introOverlay{
-  position:fixed; left:0; top:0; width:100%; height:100%;
-  display:flex; align-items:center; justify-content:center; flex-direction:column;
-  background:rgba(0,0,0,0.85); overflow:hidden; z-index:20;
-}
+html,body{margin:0;height:100%;overflow:hidden;background:#001;font-family:sans-serif;}
+#game{display:block;margin:0 auto;background:#001;}
+#hud{position:fixed;left:12px;top:12px;font-size:18px;color:white;}
+#overlay{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);color:white;font-size:32px;flex-direction:column;visibility:hidden;}
+button{padding:10px 20px;font-size:18px;border:none;border-radius:8px;background:#06f;color:white;cursor:pointer;}
 </style>
 </head>
 <body>
-
-<!-- ====== 導入演出 ====== -->
-<div id="introOverlay">
-  <canvas id="swirlCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></canvas>
-  <canvas id="bubbleCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></canvas>
-  <div id="introText" style="font-size:26px;font-weight:800;text-align:center;line-height:1.6;z-index:5;position:relative;color:#fff;text-shadow:0 0 10px cyan;"></div>
-  <button id="startBtn" style="margin-top:30px;padding:12px 24px;font-size:18px;border-radius:8px;border:0;background:#06f;color:white;font-weight:700;display:none;z-index:5;">流れに乗る！スタート</button>
-</div>
-
-<!-- ====== 既存ゲームキャンバスとHUD ====== -->
 <canvas id="game"></canvas>
-<div id="hud">
-  <div id="scoreText">プレイヤー:0　敵:0</div>
-  <div id="stateText">矢印キーで操作！先に5本フラッグを取れ！</div>
-</div>
-<div id="overlay">
-  <div id="resultText" style="font-size:32px;font-weight:800;"></div>
-  <button id="retryBtn">リトライ</button>
-</div>
+<div id="hud">スコア:0</div>
+<div id="overlay"><div id="resultText"></div><button onclick="restart()">リトライ</button></div>
 
 <script>
-// ====== 導入演出用 JS ======
-const introOverlay = document.getElementById("introOverlay");
-const introText = document.getElementById("introText");
-const startBtn = document.getElementById("startBtn");
-const bubbleCanvas = document.getElementById("bubbleCanvas");
-const bctx = bubbleCanvas.getContext("2d");
-const swirlCanvas = document.getElementById("swirlCanvas");
-const sctx = swirlCanvas.getContext("2d");
-
-let bubbles = [];
-let swirlAngle = 0;
-
-// リサイズ対応
-function resizeCanvas(){
-  bubbleCanvas.width = swirlCanvas.width = window.innerWidth;
-  bubbleCanvas.height = swirlCanvas.height = window.innerHeight;
-}
-window.addEventListener("resize",resizeCanvas);
-resizeCanvas();
-
-// ナレーション
-const introLines = [
-  "💦 史上最も危険なビーチフラッグ大会、開幕！",
-  "舞台は…水洗トイレ！流れる水と共にフラッグを奪え！",
-  "泡や謎の浮遊物に触れると…う💩の香り！？でも流される前に急げ！",
-  "さあ、覚悟はいいか！？トイレ渦流サバイバル、スタート！"
-];
-
-let introIndex = 0;
-introText.innerHTML = introLines[0];
-let introInterval = setInterval(()=>{
-  introIndex++;
-  if(introIndex >= introLines.length){
-    clearInterval(introInterval);
-    startBtn.style.display = "block";
-    return;
-  }
-  introText.innerHTML = introLines[introIndex];
-  introOverlay.style.transform = "translateY(-5px)";
-  setTimeout(()=>introOverlay.style.transform="translateY(0px)",150);
-}, 2500);
-
-// バブル生成
-function spawnBubble(){
-  const x = Math.random()*bubbleCanvas.width;
-  const y = bubbleCanvas.height + 10;
-  const r = Math.random()*12+5;
-  const vy = -(Math.random()*3+1);
-  const color = Math.random()<0.1?"rgba(255,220,100,0.6)":"rgba(200,255,255,0.6)";
-  bubbles.push({x,y,r,vy,color});
-}
-
-// バブル描画
-function drawBubbles(){
-  bctx.clearRect(0,0,bubbleCanvas.width,bubbleCanvas.height);
-  for(const b of bubbles){
-    bctx.beginPath();
-    bctx.arc(b.x,b.y,b.r,0,Math.PI*2);
-    bctx.fillStyle = b.color;
-    bctx.fill();
-    b.y += b.vy;
-  }
-  bubbles = bubbles.filter(b => b.y + b.r > 0);
-  requestAnimationFrame(drawBubbles);
-}
-drawBubbles();
-setInterval(spawnBubble, 100);
-
-// 渦巻きアニメ
-function drawSwirl(){
-  sctx.clearRect(0,0,swirlCanvas.width,swirlCanvas.height);
-  const cx = swirlCanvas.width/2;
-  const cy = swirlCanvas.height/2;
-  const maxR = Math.min(cx,cy);
-  for(let i=0;i<30;i++){
-    const r = maxR*(i/30);
-    sctx.beginPath();
-    sctx.arc(cx,cy,r,swirlAngle+i*0.2,swirlAngle+i*0.2+Math.PI/2);
-    const alpha = 0.05 + i*0.02;
-    sctx.strokeStyle = `rgba(100,200,255,${alpha})`;
-    sctx.lineWidth = 4;
-    sctx.stroke();
-  }
-  swirlAngle += 0.02;
-  requestAnimationFrame(drawSwirl);
-}
-drawSwirl();
-
-// ====== 既存ゲームコード ======
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
-const center={x:0,y:0};
-function resize(){canvas.width=innerWidth;canvas.height=innerHeight;center.x=canvas.width/2;center.y=canvas.height/2;}
-window.addEventListener("resize",resize);resize();
+let score=0,gameOver=false;
+
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight;}
+window.addEventListener("resize",resize);
+resize();
 
 const keys={};
 window.addEventListener("keydown",e=>keys[e.key]=true);
 window.addEventListener("keyup",e=>keys[e.key]=false);
 
-const scoreText=document.getElementById("scoreText");
-const stateText=document.getElementById("stateText");
-const overlay=document.getElementById("overlay");
-const resultText=document.getElementById("resultText");
-const retryBtn=document.getElementById("retryBtn");
+const center={x:canvas.width/2,y:canvas.height/2};
+const player={x:center.x,y:center.y,r:20,color:"pink",vx:0,vy:0,scale:1,scaleDecay:0.05};
 
-retryBtn.onclick=()=>{
-  resetGame();
-  start();
-  overlay.classList.remove("visible");
-};
+let obstacles=[];
+let bubbles=[];
 
-// ====== ここからゲーム本体 ======
-let player,enemy,flag,item;
-let walls=[];
-let bullets=[];
-let running=true;
-const MAX_SCORE=5;
-let rafId=null;
-let itemTimer=0,wallTimer=0;
-let bulletTimer=0;
-let itemEffectTimer = 0;
-let itemEffect = null;  // "rapid", "laser", "freeze"
-
-
-// ランダムや距離計算関数
 function randRange(a,b){return a+Math.random()*(b-a);}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
 
-// フラッグ、アイテム、壁生成
-function spawnFlag(){const ang=Math.random()*Math.PI*2;const r=randRange(100,Math.min(canvas.width,canvas.height)/3);return{x:center.x+Math.cos(ang)*r,y:center.y+Math.sin(ang)*r};}
-function spawnItem() {
-  const ang = Math.random()*Math.PI*2;
-  const r = randRange(80, Math.min(canvas.width,canvas.height)/3.2);
-  const types = ["rapid","laser","freeze"];
-  const type = types[Math.floor(Math.random()*types.length)];
-  return {x:center.x+Math.cos(ang)*r, y:center.y+Math.sin(ang)*r, radius:14, active:true, type:type};
+function spawnObstacle(){
+  const r=randRange(20,50);
+  obstacles.push({x:randRange(r,canvas.width-r),y:randRange(r,canvas.height-r),r:r,color:`hsla(${randRange(0,360)},70%,85%,0.6)`});
+}
+for(let i=0;i<6;i++) spawnObstacle();
+
+function applyPunin(o,ob){
+  const dx=o.x-ob.x, dy=o.y-ob.y, d=Math.hypot(dx,dy);
+  const nx=dx/d||0, ny=dy/d||0;
+  o.vx+=nx*0.1*ob.r;
+  o.vy+=ny*0.1*ob.r;
+  o.scale=1.4; // ぷにん膨らむ
+  // ふわもこパーティクル
+  for(let i=0;i<5;i++){
+    bubbles.push({
+      x:o.x+randRange(-5,5),
+      y:o.y+randRange(-5,5),
+      r:randRange(3,6),
+      vy:randRange(-1.5,-0.5),
+      color:`hsla(${randRange(200,300)},60%,85%,0.4)`
+    });
+  }
 }
 
-function spawnWall(){const ang=Math.random()*Math.PI*2;const r=randRange(60,Math.min(canvas.width,canvas.height)/2.6);return{x:center.x+Math.cos(ang)*r,y:center.y+Math.sin(ang)*r,radius:randRange(40,70),active:true,ttl:Math.floor(randRange(180,360))};}
+let safeTimer=60;
 
-// ゲーム初期化
-function resetGame(){
-  player={x:center.x+120,y:center.y,vx:0,vy:0,r:16,color:"white",score:0,inv:false,invT:0};
-  enemy={x:center.x-120,y:center.y,vx:0,vy:0,r:16,color:"red",score:0,aiT:0,inv:false,invT:0};
-  flag=spawnFlag();
-  item=null;
-  walls=[];
-  bullets=[];
-  running=true;
-  itemTimer=240;wallTimer=300;
-  scoreText.textContent="プレイヤー:0　敵:0";
-}
-resetGame();
-
-//---------------------------------------------
-// 物理・操作
-//---------------------------------------------
-function whirlpool(o){
-  const dx=center.x-o.x, dy=center.y-o.y;
-  const a=Math.atan2(dy,dx);
-  const d=Math.hypot(dx,dy);
-  const pull = 0.015 + Math.min(0.03, (Math.max(0,350-d))/350*0.03);
-  const spin = 0.04 + Math.min(0.08, (Math.max(0,350-d))/350*0.06);
-  o.vx += Math.cos(a)*pull - Math.sin(a)*spin;
-  o.vy += Math.sin(a)*pull + Math.cos(a)*spin;
-  o.vx *= 0.986; o.vy *= 0.986;
-}
-
-function controlPlayer(){
-  const s=0.36;
+function movePlayer(){
+  const s=0.2;
   if(keys["ArrowUp"]||keys["w"]) player.vy-=s;
   if(keys["ArrowDown"]||keys["s"]) player.vy+=s;
   if(keys["ArrowLeft"]||keys["a"]) player.vx-=s;
   if(keys["ArrowRight"]||keys["d"]) player.vx+=s;
+  player.x+=player.vx; player.y+=player.vy;
+  player.vx*=0.95; player.vy*=0.95;
+  if(player.x<player.r)player.x=player.r;
+  if(player.x>canvas.width-player.r)player.x=canvas.width-player.r;
+  if(player.y<player.r)player.y=player.r;
+  if(player.y>canvas.height-player.r)player.y=canvas.height-player.r;
+  if(player.scale>1){player.scale-=player.scaleDecay;if(player.scale<1)player.scale=1;}
 }
 
-function enemyAI(){
-  enemy.aiT--;
-  if(enemy.aiT<=0){enemy.aiT=Math.floor(randRange(30,120)); enemy.mode=Math.random()<0.78?"flag":"ram";}
-  let target = flag;
-  if(enemy.mode==="ram" && Math.random()<0.9) target = player;
-  const dx = target.x - enemy.x, dy = target.y - enemy.y, a = Math.atan2(dy,dx);
-  enemy.vx += Math.cos(a)*0.12;
-  enemy.vy += Math.sin(a)*0.12;
-}
-
-function move(o){
-  o.x += o.vx; o.y += o.vy;
-
-  // 画面端ガードレール
-  const r = o.r;
-  if(o.x<r){ o.x=r; o.vx=0; }
-  if(o.x>canvas.width-r){ o.x=canvas.width-r; o.vx=0; }
-  if(o.y<r){ o.y=r; o.vy=0; }
-  if(o.y>canvas.height-r){ o.y=canvas.height-r; o.vy=0; }
-
-  if(o.inv){ o.invT--; if(o.invT<=0) o.inv=false; }
-}
-
-//---------------------------------------------
-// フラッグ・アイテム・壁
-//---------------------------------------------
-function checkFlag(o){
-  if(dist(o,flag)<o.r+12){
-    o.score++;
-    flag = spawnFlag();
-    scoreText.textContent=`プレイヤー:${player.score}　敵:${enemy.score}`;
-    if(o.score>=MAX_SCORE){
-      running=false;
-      resultText.textContent=(o===player?"プレイヤー":"敵")+"の勝ち！";
-      overlay.classList.add("visible");
+function checkCollisions(){
+  let touching=false;
+  for(let i=0;i<obstacles.length;i++){
+    const o=obstacles[i];
+    const d=dist(player,o);
+    if(d<player.r+o.r){
+      touching=true;
+      applyPunin(player,o);
+      score++;
+      document.getElementById("hud").textContent=`スコア:${score}`;
+    } else if(d>player.r+o.r+50 && touching===false){
+      // 離れた障害物はふわもこ消滅
+      obstacles.splice(i,1);
+      spawnObstacle();
     }
   }
-}
 
-function checkItem(o) {
-  if(!item || !item.active) return;
-  if(dist(o,item) < o.r + item.radius){
-    item.active = false;
-    itemEffect = item.type;       // 効果を設定
-    itemEffectTimer = 600;        // 10秒間有効
-    if(itemEffect === "freeze") enemy.invT = itemEffectTimer; // 敵凍結
+  if(safeTimer>0){safeTimer--; return;}
+
+  if(!touching && Math.abs(player.vx)<0.05 && Math.abs(player.vy)<0.05){
+    gameOver=true;
+    document.getElementById("overlay").style.visibility="visible";
+    document.getElementById("resultText").textContent="ゲームオーバー！";
   }
 }
 
+function drawPlayer(){
+  ctx.save();
+  ctx.translate(player.x,player.y);
+  ctx.scale(player.scale,1/player.scale);
+  ctx.beginPath();
+  ctx.arc(0,0,player.r,0,Math.PI*2);
+  ctx.fillStyle=player.color;
+  ctx.shadowBlur=10; ctx.shadowColor="rgba(255,255,255,0.3)";
+  ctx.fill();
+  ctx.restore();
+}
 
-function handleWalls(o){
-  for(const w of walls){
-    if(!w.active) continue;
-    const dx=o.x-w.x, dy=o.y-w.y, d=Math.hypot(dx,dy), minD=o.r+w.radius;
-    if(d<minD){
-      if(o.inv) continue;
-      const nx=dx/d||0, ny=dy/d||0, overlap=minD-d;
-      o.x += nx*overlap; o.y += ny*overlap;
-      const dot = o.vx*nx + o.vy*ny;
-      o.vx -= nx*dot*1.2; o.vy -= ny*dot*1.2;
-    }
+function drawObstacles(){
+  for(const o of obstacles){
+    ctx.beginPath();
+    ctx.arc(o.x,o.y,o.r,0,Math.PI*2);
+    ctx.fillStyle=o.color;
+    ctx.fill();
   }
 }
 
-function handlePlayerEnemyCollision(){
-  if(player.inv||enemy.inv) return;
-  const dx=enemy.x-player.x, dy=enemy.y-player.y, d=Math.hypot(dx,dy), minD=player.r+enemy.r;
-  if(d<minD){
-    const overlap=(minD-d)/2, nx=dx/d, ny=dy/d;
-    player.x -= nx*overlap; player.y -= ny*overlap;
-    enemy.x += nx*overlap; enemy.y += ny*overlap;
-    player.vx -= nx*0.5; player.vy -= ny*0.5;
-    enemy.vx += nx*0.5; enemy.vy += ny*0.5;
-  }
-}
-
-function updateWalls(){
-  wallTimer--;
-  if(wallTimer<=0){ walls.push(spawnWall()); wallTimer=Math.floor(randRange(240,480)); }
-  for(const w of walls){ if(w.active){ w.ttl--; if(w.ttl<=0) w.active=false; } }
-  walls = walls.filter(w=>w.active);
-}
-
-function updateItem(){
-  itemTimer--;
-  if(itemTimer<=0){ item=spawnItem(); itemTimer=Math.floor(randRange(600,900)); }
-}
-
-//---------------------------------------------
-// 描画
-//---------------------------------------------
-function drawCircle(o){
-  ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.fillStyle=o.inv?"cyan":o.color; ctx.fill();
-}
-function drawFlag(){
-  ctx.beginPath();ctx.moveTo(flag.x,flag.y-18);ctx.lineTo(flag.x,flag.y+18);ctx.strokeStyle="#ff0";ctx.lineWidth=3;ctx.stroke();
-  ctx.beginPath();ctx.moveTo(flag.x,flag.y-18);ctx.lineTo(flag.x+20,flag.y-12);ctx.lineTo(flag.x,flag.y-6);ctx.closePath();ctx.fillStyle="#ff0";ctx.fill();
-}
-function drawItem(){if(!item||!item.active) return; ctx.beginPath();ctx.arc(item.x,item.y,item.radius,0,Math.PI*2);ctx.fillStyle="aqua";ctx.shadowBlur=12;ctx.shadowColor="cyan";ctx.fill();ctx.shadowBlur=0;}
-function drawWalls(){for(const w of walls){ctx.beginPath();ctx.arc(w.x,w.y,w.radius,0,Math.PI*2);ctx.fillStyle="rgba(20,20,60,0.9)";ctx.fill();}}
-function drawBackground(){for(let i=0;i<6;i++){ctx.beginPath();ctx.arc(center.x,center.y,60+i*40,0,Math.PI*2);ctx.strokeStyle=`rgba(255,255,255,${0.02+i*0.01})`;ctx.stroke();}}
-
-// 弾発射関数
-function shootBullet(shooter){
-  if(itemEffect==="laser" && shooter===player){
-    bullets.push({x:shooter.x,y:shooter.y,vx:0,vy:-10,r:20,owner:shooter,laser:true});
-  } else {
-    const speed=6;
-    const angle=Math.atan2(enemy.y-shooter.y, enemy.x-shooter.x);
-    bullets.push({x:shooter.x,y:shooter.y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,r:6,owner:shooter});
-  }
-}
-
-
-// ゲームループ
-function update(){
-  if(!running) return;
-
-  // --- ゲーム本体 ---
-  controlPlayer();
-  enemyAI();
-  whirlpool(player);
-  whirlpool(enemy);
-  move(player);
-  move(enemy);
-  handleWalls(player);
-  handleWalls(enemy);
-  handlePlayerEnemyCollision();
-  checkFlag(player);
-  checkFlag(enemy);
-  checkItem(player);
-  checkItem(enemy);
-  updateWalls();
-  updateItem();
-
-  // --- 弾処理 ---
-  const fireRate = (itemEffect==="rapid") ? 5 : 60;
-  bulletTimer--;
-  if(bulletTimer<=0){
-    shootBullet(player);
-    bulletTimer = fireRate;
-  }
-  for(const b of bullets){
-    b.x+=b.vx;
+function drawBubbles(){
+  for(const b of bubbles){
+    ctx.beginPath();
+    ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+    ctx.fillStyle=b.color;
+    ctx.fill();
     b.y+=b.vy;
-    const target=(b.owner===player)?enemy:player;
-    const dx=target.x-b.x, dy=target.y-b.y, d=Math.hypot(dx,dy);
-    if(d<target.r+b.r){ const nx=dx/d||0, ny=dy/d||0; const force=5; target.vx+=nx*force; target.vy+=ny*force; b.hit=true; }
   }
-  bullets=bullets.filter(b=>!b.hit && b.x>0 && b.x<canvas.width && b.y>0 && b.y<canvas.height);
-
-    if(itemEffectTimer>0){
-      itemEffectTimer--;
-        if(itemEffectTimer<=0) itemEffect=null;
-    }
-
-
-  // --- 描画 ---
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawBackground(); drawFlag(); drawItem(); drawWalls(); drawCircle(player); drawCircle(enemy);
-  for(const b of bullets){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fillStyle="orange"; ctx.fill(); }
-
-  rafId=requestAnimationFrame(update);
+  if(bubbles.length>150) bubbles.splice(0,bubbles.length-150);
 }
 
-// ゲーム開始
-function start(){
-  cancelAnimationFrame(rafId);
-  rafId=requestAnimationFrame(update);
+function update(){
+  if(!gameOver){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    movePlayer();
+    checkCollisions();
+    drawObstacles();
+    drawPlayer();
+    drawBubbles();
+    requestAnimationFrame(update);
+  }
 }
 
-// ====== 導入演出からゲーム開始 ======
-startBtn.onclick = ()=>{
-  introOverlay.style.display = "none"; // 導入演出消す
-  resetGame();
-  start();
-};
+function restart(){
+  gameOver=false;
+  safeTimer=60;
+  document.getElementById("overlay").style.visibility="hidden";
+  player.x=center.x; player.y=center.y; player.vx=0; player.vy=0; player.scale=1;
+  obstacles.length=0;
+  for(let i=0;i<6;i++) spawnObstacle();
+  score=0;
+  document.getElementById("hud").textContent=`スコア:${score}`;
+  update();
+}
 
-// 導入演出スキップ用
-window.addEventListener("keydown", e => {
-  if(e.key === " " || e.key === "Enter"){  // スペースキーまたはEnterでスキップ
-    if(introOverlay.style.display !== "none"){
-      introOverlay.style.display = "none";  // 演出を消す
-      clearInterval(introInterval);          // ナレーションタイマー停止
-      startBtn.style.display = "none";       // スタートボタン非表示
-      resetGame();
-      start();
-    }
-  }
-});
-
+update();
 </script>
 </body>
 </html>
